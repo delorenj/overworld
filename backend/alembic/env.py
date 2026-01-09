@@ -17,7 +17,7 @@ backend_dir = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_dir))
 
 from app.core.database import Base
-from app.models import GenerationJob, Map, Theme, TokenBalance, Transaction, User
+from app.models import Document, GenerationJob, Map, Theme, TokenBalance, Transaction, User
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
