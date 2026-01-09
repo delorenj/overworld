@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # Traefik Reverse Proxy
+  traefik:
+    image: traefik:v2.10
+    container_name: overworld-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - frontend
+      - backend
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: overworld-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-overworld}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-overworld_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-overworld}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    # Ports commented out to avoid conflicts - access via Docker network
+    # ports:
+    #   - "5432:5432"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U overworld"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: overworld-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-overworld_redis_password}
+    volumes:
+      - redis_data:/data
+    # Ports commented out to avoid conflicts - access via Docker network
+    # ports:
+    #   - "6379:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: overworld-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-overworld}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-overworld_rabbitmq_password}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    # Ports commented out to avoid conflicts - access via docker exec if needed
+    # ports:
+    #   - "5672:5672"   # AMQP
+    #   - "15672:15672" # Management UI
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: overworld-backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-overworld}:${POSTGRES_PASSWORD:-overworld_dev_password}@postgres:5432/${POSTGRES_DB:-overworld}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-overworld_redis_password}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-overworld}:${RABBITMQ_PASSWORD:-overworld_rabbitmq_password}@rabbitmq:5672/
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_jwt_secret_change_in_production}
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+      - backend_cache:/app/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/ws`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: overworld-frontend
+    environment:
+      VITE_API_URL: http://localhost/api
+      VITE_WS_URL: ws://localhost/ws
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - frontend_cache:/app/.cache
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=5173"
+    command: npm run dev -- --host 0.0.0.0
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  backend_cache:
+  frontend_cache:

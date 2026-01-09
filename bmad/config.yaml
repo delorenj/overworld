@@ -1,0 +1,28 @@
+project_name: "Overworld"
+project_type: "web-app"
+project_level: 2
+output_folder: "docs"
+bmm:
+  workflow_status_file: "docs/bmm-workflow-status.yaml"
+  sprint_status_file: "docs/sprint-status.yaml"
+paths:
+  docs: "docs"
+  stories: "docs/stories"
+  tests: "tests"
+agents:
+  analyst:
+    enabled: true
+  pm:
+    enabled: true
+  architect:
+    enabled: true
+  sm:
+    enabled: true
+  dev:
+    enabled: true
+  qa:
+    enabled: true
+workflow:
+  require_quality_gates: true
+  minimum_prd_score: 90
+  minimum_architecture_score: 90

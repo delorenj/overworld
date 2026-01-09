@@ -1,0 +1,58 @@
+metadata:
+  project_name: "Overworld"
+  project_type: "web-app"
+  project_level: 2
+  initialized_at: "2026-01-04T23:59:58-05:00"
+  last_updated: "2026-01-09T12:00:00-05:00"
+  bmad_version: "6.0"
+
+workflow_status:
+  phase_1_discovery:
+    product_brief:
+      status: "not_started"
+      required: "recommended"
+      output_path: "docs/01-product-brief.md"
+
+  phase_2_requirements:
+    prd:
+      status: "completed"
+      required: "required"
+      output_path: "docs/prd-overworld-2026-01-05.md"
+      quality_score: 95
+
+    tech_spec:
+      status: "not_started"
+      required: "optional"
+      output_path: "docs/02-tech-spec.md"
+
+  phase_3_design:
+    architecture:
+      status: "completed"
+      required: "required"
+      output_path: "docs/architecture-overworld-2026-01-08.md"
+      quality_score: 98
+
+  phase_4_planning:
+    sprint_plan:
+      status: "completed"
+      required: "required"
+      output_path: "docs/sprint-plan-overworld-2026-01-09.md"
+
+  phase_5_implementation:
+    stories:
+      total_count: 17
+      completed_count: 0
+      in_progress_count: 0
+      status: "planned"
+      stories_path: "docs/stories/"
+      sprint_status_path: ".bmad/sprint-status.yaml"
+
+approval_gates:
+  prd_approved: false
+  architecture_approved: false
+  sprint_plan_approved: false
+
+notes:
+  - "Level 2 project: PRD and Architecture are required"
+  - "Product Brief is recommended for discovery phase"
+  - "Quality gates enabled: PRD and Architecture require 90+ scores"
