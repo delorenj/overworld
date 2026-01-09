@@ -88,7 +88,7 @@ services:
       target: development
     container_name: overworld-backend
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-overworld}:${POSTGRES_PASSWORD:-overworld_dev_password}@postgres:5432/${POSTGRES_DB:-overworld}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-overworld}:${POSTGRES_PASSWORD:-overworld_dev_password}@postgres:5432/${POSTGRES_DB:-overworld}
       REDIS_URL: redis://:${REDIS_PASSWORD:-overworld_redis_password}@redis:6379/0
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-overworld}:${RABBITMQ_PASSWORD:-overworld_rabbitmq_password}@rabbitmq:5672/
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

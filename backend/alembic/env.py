@@ -9,7 +9,15 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 # Import your models here for autogenerate
-# from app.models import Base
+import sys
+from pathlib import Path
+
+# Add backend directory to path for imports
+backend_dir = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(backend_dir))
+
+from app.core.database import Base
+from app.models import GenerationJob, Map, Theme, TokenBalance, Transaction, User
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -22,9 +30,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -72,18 +78,18 @@ async def run_async_migrations() -> None:
     """
     import os
     from dotenv import load_dotenv
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     load_dotenv()
 
-    # Override sqlalchemy.url from environment
-    database_url = os.getenv("DATABASE_URL", "postgresql://overworld:overworld_dev_password@localhost:5432/overworld")
-    config.set_main_option("sqlalchemy.url", database_url)
-
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    # Get database URL from environment
+    database_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://overworld:overworld_dev_password@postgres:5432/overworld",
     )
+
+    # Create async engine directly
+    connectable = create_async_engine(database_url, poolclass=pool.NullPool)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
