@@ -95,10 +95,16 @@ services:
       STRIPE_API_KEY: ${STRIPE_API_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_jwt_secret_change_in_production}
+      R2_ACCESS_KEY_ID: f68a196c5c84014bb85f8ab97b386994
+      R2_SECRET_ACCESS_KEY: PMAIY_Par2XPVaO3ByfXSQlxZI8DQQGJkJce7prJ
+      R2_ENDPOINT_URL: https://f68a196c5c84014bb85f8ab97b386994.r2.cloudflarestorage.com/
+      R2_BUCKET_NAME: overworld
       ENVIRONMENT: development
     volumes:
       - ./backend:/app
       - backend_cache:/app/.cache
+    ports:
+      - "8001:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,12 +128,13 @@ services:
       target: development
     container_name: overworld-frontend
     environment:
-      VITE_API_URL: http://localhost/api
-      VITE_WS_URL: ws://localhost/ws
+      VITE_API_URL: http://localhost:8001/api
+      VITE_WS_URL: ws://localhost:8001/ws
     volumes:
       - ./frontend:/app
-      - /app/node_modules
       - frontend_cache:/app/.cache
+    ports:
+      - "5173:5173"
     networks:
       - frontend
     labels:

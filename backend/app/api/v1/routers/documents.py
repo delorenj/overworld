@@ -75,11 +75,10 @@ async def upload_document(
 
     # Upload to R2
     r2_service = get_r2_service()
-    file_obj = BytesIO(file_content)
 
     try:
         r2_path, r2_url = await r2_service.upload_file(
-            file_obj=file_obj,
+            file_content=file_content,
             filename=file.filename or "unknown",
             user_id=user_id,
             mime_type=mime_type,

@@ -60,9 +60,9 @@ class R2StorageService:
 
     async def upload_file(
         self,
-        file_obj: BinaryIO,
+        file_content: bytes,
         filename: str,
-        user_id: UUID,
+        user_id: int,
         mime_type: str,
         max_retries: int = 3,
     ) -> tuple[str, str]:
@@ -70,9 +70,9 @@ class R2StorageService:
         Upload file to R2 storage with retry logic.
 
         Args:
-            file_obj: File-like object to upload
+            file_content: File content as bytes
             filename: Original filename
-            user_id: User ID
+            user_id: User ID (integer)
             mime_type: MIME type of the file
             max_retries: Maximum number of retry attempts
 
@@ -89,8 +89,8 @@ class R2StorageService:
         last_error = None
         for attempt in range(max_retries):
             try:
-                # Reset file pointer to beginning for retries
-                file_obj.seek(0)
+                # Create fresh BytesIO for each retry attempt
+                file_obj = BytesIO(file_content)
 
                 # Upload to R2 using boto3
                 await asyncio.get_event_loop().run_in_executor(
