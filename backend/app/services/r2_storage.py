@@ -8,6 +8,7 @@ from typing import BinaryIO
 from uuid import UUID
 
 import boto3
+from botocore.client import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 
 from app.core.config import settings
@@ -35,6 +36,7 @@ class R2StorageService:
                 endpoint_url=settings.R2_ENDPOINT_URL,
                 aws_access_key_id=settings.R2_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+                config=Config(signature_version="s3v4"),
                 region_name="auto",  # R2 uses 'auto' region
             )
         return self._client
