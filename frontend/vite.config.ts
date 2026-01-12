@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
+    allowedHosts: ['overworld.delo.sh'],
     port: 5173,
     watch: {
       usePolling: true,

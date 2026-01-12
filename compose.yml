@@ -1,25 +1,4 @@
-version: '3.8'
-
 services:
-  # Traefik Reverse Proxy
-  traefik:
-    image: traefik:v2.10
-    container_name: overworld-traefik
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
-      - "8080:8080"  # Traefik dashboard
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - frontend
-      - backend
-
-  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: overworld-postgres
@@ -30,29 +9,22 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
-    # Ports commented out to avoid conflicts - access via Docker network
-    # ports:
-    #   - "5432:5432"
     networks:
-      - backend
+      - proxy
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U overworld"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: overworld-redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-overworld_redis_password}
     volumes:
       - redis_data:/data
-    # Ports commented out to avoid conflicts - access via Docker network
-    # ports:
-    #   - "6379:6379"
     networks:
-      - backend
+      - proxy
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 5s
@@ -68,12 +40,8 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-overworld_rabbitmq_password}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-    # Ports commented out to avoid conflicts - access via docker exec if needed
-    # ports:
-    #   - "5672:5672"   # AMQP
-    #   - "15672:15672" # Management UI
     networks:
-      - backend
+      - proxy
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -104,7 +72,7 @@ services:
       - ./backend:/app
       - backend_cache:/app/.cache
     ports:
-      - "8001:8000"
+      - "8778:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,7 +81,7 @@ services:
       rabbitmq:
         condition: service_healthy
     networks:
-      - backend
+      - proxy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/ws`)"
@@ -128,26 +96,27 @@ services:
       target: development
     container_name: overworld-frontend
     environment:
-      VITE_API_URL: http://localhost:8001/api
-      VITE_WS_URL: ws://localhost:8001/ws
+      VITE_API_URL: /api
+      VITE_WS_URL: wss://overworld.delo.sh/ws
     volumes:
       - ./frontend:/app
       - frontend_cache:/app/.cache
     ports:
-      - "5173:5173"
+      - "8777:5173"
     networks:
-      - frontend
+      - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8188"
+      - "traefik.http.routers.frontend.rule=Host(`overworld.delo.sh`)"
       - "traefik.http.services.frontend.loadbalancer.server.port=5173"
     command: npm run dev -- --host 0.0.0.0
 
 networks:
-  frontend:
-    driver: bridge
-  backend:
-    driver: bridge
+  proxy:
+    external: true
 
 volumes:
   postgres_data:
