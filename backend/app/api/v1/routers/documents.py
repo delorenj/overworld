@@ -10,6 +10,7 @@ from app.core.database import get_session_factory
 from app.models import Document
 from app.schemas import DocumentUploadResponse
 from app.services import R2StorageError, get_r2_service
+from app.services.document_processor import DocumentProcessor
 from app.utils import FileValidationError, get_mime_type, validate_file_size, validate_file_type
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -89,27 +90,27 @@ async def upload_document(
             detail=f"Failed to upload file: {str(e)}",
         )
 
-    # Create document record in database
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        document = Document(
-            user_id=user_id,
-            filename=file.filename or "unknown",
-            file_size_bytes=file_size,
-            mime_type=mime_type,
-            r2_path=r2_path,
-            r2_url=r2_url,
-            created_at=datetime.now(timezone.utc),
-        )
-        session.add(document)
-        await session.commit()
-        await session.refresh(document)
+        # Create document record in database
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            document = Document(
+                user_id=user_id,
+                filename=file.filename or "unknown",
+                file_size_bytes=file_size,
+                mime_type=mime_type,
+                r2_path=r2_path,
+                r2_url=r2_url,
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(document)
+            await session.commit()
+            await session.refresh(document)
 
-        # Return response
-        return DocumentUploadResponse(
-            document_id=document.id,
-            filename=document.filename,
-            size_bytes=document.file_size_bytes,
-            r2_url=document.r2_url,
-            uploaded_at=document.created_at,
-        )
+            # Return response
+            return DocumentUploadResponse(
+                document_id=document.id,
+                filename=document.filename,
+                size_bytes=document.file_size_bytes,
+                r2_url=document.r2_url,
+                uploaded_at=document.created_at,
+            )

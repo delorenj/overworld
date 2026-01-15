@@ -3,6 +3,7 @@
 import enum
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -34,6 +35,9 @@ class GenerationJob(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
     # Foreign keys
+    document_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True
+    )  # Optional - can be triggered by document upload
     map_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("maps.id", ondelete="CASCADE"), nullable=True
     )  # Null until map created
@@ -62,12 +66,13 @@ class GenerationJob(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="generation_jobs")
+    document: Mapped[Optional["Document"]] = relationship(
+        "Document", back_populates="generation_jobs"
+    )
     map: Mapped[Optional["Map"]] = relationship("Map", back_populates="generation_jobs")
 
     def __repr__(self) -> str:
