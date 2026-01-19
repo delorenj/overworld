@@ -16,8 +16,8 @@ from app.models.user import User
 from app.services.document_processor import DocumentProcessor
 from app.schemas.generation_job import GenerationRequest, JobStateUpdate
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 class GenerationWorker:
     """Background worker for processing generation jobs."""
@@ -84,24 +84,31 @@ class GenerationWorker:
             await self._handle_failure(request, str(e))
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
-    async def _process_job(self, request: GenerationRequest) -> None:
+     async def _process_job(self, request: GenerationRequest) -> None:
         """Process a single generation job."""
         async with get_async_session() as db:
             await self._update_job_status(db, request.job_id, JobStatus.PROCESSING, 0.0)
-
-            try:
-                stmt = select(GenerationJob).where(GenerationJob.id == request.job_id)
-                result = await db.execute(stmt)
-                job = result.scalar_one()
-
-                processor = DocumentProcessor()
-                await processor.process_document(job.document_id)
-
-                await self._update_job_status(db, request.job_id, JobStatus.COMPLETED, 100.0)
-
+                
+                context = JobContext(
+                    job_id=request.job_id,
+                    user_id=request.user_id,
+                    document_url=f"",
+                    hierarchy={"L0": {"title": "Generated Map", "id": "root"}},
+                    theme=request.theme_id or "smb3",
+                    options=request.options,
+                )
+                
+                coordinator = CoordinatorAgent()
+                result = await coordinator.execute(context)
+                
+                if result.success and result.data:
+                    await self._update_job_status(db, request.job_id, JobStatus.COMPLETED, 100.0)
+                    logger.info(f"Job {request.job_id}: Map generated successfully")
+                else:
+                    await self._update_job_status(db, request.job_id, JobStatus.FAILED, 0.0, result.error if result.error else "Generation failed")
+                
             except Exception as e:
                 await self._update_job_status(db, request.job_id, JobStatus.FAILED, 0.0, str(e))
-                raise
 
     async def _update_job_status(
         self,

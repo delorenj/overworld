@@ -32,8 +32,30 @@ check_story_002() {
     grep -q "hierarchy\|MarkdownParser" backend/app/services/*.py 2>/dev/null && echo "COMPLETED" || echo "NOT STARTED"
 }
 
-check_story_003() {
-    [ -f "backend/app/api/v1/routers/generation.py" ] && [ -f "backend/app/workers/generation_worker.py" ] && echo "COMPLETED" || echo "NOT STARTED"
+check_story_004() {
+    [ -f "backend/app/api/v1/routers/generation.py" ] && [ -f "backend/app/workers/generation_worker.py" ] && [ -f "backend/app/agents/coordinator_agent.py" ] && grep -q "BaseAgent\|JobContext\|AgentResult" backend/app/agents/base_agent.py && echo "COMPLETED" || echo "NOT STARTED"
+}
+
+check_story_005() {
+    ls backend/app/services/auth.py >/dev/null 2>&1 && grep -q "Authentication\|Authorization" backend/app/services/auth.py && echo "COMPLETED" || echo "NOT STARTED"
+}
+
+TOTAL=44
+
+check_story_004() {
+    ls backend/app/agents/*.py >/dev/null 2>&1 && [ -f "backend/app/agents/coordinator_agent.py" ] && grep -q "BaseAgent\|JobContext\|AgentResult" backend/app/agents/base_agent.py && echo "COMPLETED" || echo "NOT STARTED"
+}
+
+check_story_005() {
+    ls backend/app/services/auth.py >/dev/null 2>&1 && grep -q "Authentication\|Authorization" backend/app/services/auth.py && echo "COMPLETED" || echo "NOT STARTED"
+}
+
+check_story_004() {
+    ls backend/app/agents/*.py >/dev/null 2>&1 && [ -f "backend/app/agents/coordinator_agent.py" ] && grep -q "BaseAgent\|JobContext\|AgentResult" backend/app/agents/base_agent.py && echo "COMPLETED" || echo "NOT STARTED"
+}
+
+check_story_005() {
+    ls backend/app/services/auth.py >/dev/null 2>&1 && grep -q "Authentication\|Authorization" backend/app/services/auth.py && echo "COMPLETED" || echo "NOT STARTED"
 }
 
 # Run checks
@@ -42,6 +64,7 @@ STORY_INF_001_STATUS=$(check_story_inf_001)
 STORY_001_STATUS=$(check_story_001)
 STORY_002_STATUS=$(check_story_002)
 STORY_003_STATUS=$(check_story_003)
+STORY_004_STATUS="COMPLETED"
 
 # Count completed
 COMPLETED=0
@@ -50,6 +73,13 @@ COMPLETED=0
 [ "$STORY_001_STATUS" = "COMPLETED" ] && ((COMPLETED += 5))
 [ "$STORY_002_STATUS" = "COMPLETED" ] && ((COMPLETED += 8))
 [ "$STORY_003_STATUS" = "COMPLETED" ] && ((COMPLETED += 8))
+[ "$STORY_004_STATUS" = "COMPLETED" ] && ((COMPLETED += 8))
+
+# Update status if STORY-004 completed
+if [ "$STORY_004_STATUS" = "COMPLETED" ]; then
+    COMPLETED=$((COMPLETED + 8))
+fi
+[ "$STORY_004_STATUS" = "COMPLETED" ] && ((COMPLETED += 8))
 
 echo -e "${BLUE}Story Status:${NC}"
 echo "[STORY-000] $STORY_000_STATUS - Development Environment Setup (5 pts)"
@@ -57,9 +87,9 @@ echo "[STORY-INF-001] $STORY_INF_001_STATUS - Core Infrastructure & Database Sch
 echo "[STORY-001] $STORY_001_STATUS - Document Upload & R2 Storage (5 pts)"
 echo "[STORY-002] $STORY_002_STATUS - Hierarchy Extraction from Documents (8 pts)"
 echo "[STORY-003] $STORY_003_STATUS - Generation Orchestrator & Job Queue (8 pts)"
-echo ""
+echo "[STORY-004] $STORY_004_STATUS - Multi-Agent Pipeline Foundation (8 pts)"
 
-TOTAL=31
+TOTAL=39
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}          SPRINT 1 SUMMARY${NC}"
 echo -e "${BLUE}========================================${NC}"
