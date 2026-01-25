@@ -156,6 +156,57 @@ class R2StorageService:
         except ClientError as e:
             raise R2StorageError(f"Failed to generate pre-signed URL: {str(e)}")
 
+    async def download_file(
+        self,
+        bucket_name: str,
+        r2_path: str,
+        max_retries: int = 3,
+    ) -> bytes:
+        """
+        Download file from R2 storage with retry logic.
+
+        Args:
+            bucket_name: Name of the R2 bucket
+            r2_path: Path to the file in R2
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            File content as bytes
+
+        Raises:
+            R2StorageError: If download fails after all retries
+        """
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                # Download file from R2
+                response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.client.get_object(Bucket=bucket_name, Key=r2_path),
+                )
+
+                # Read content from response body
+                content = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: response["Body"].read(),
+                )
+
+                return content
+
+            except (ClientError, EndpointConnectionError) as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 1s, 2s, 4s
+                    wait_time = 2**attempt
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    break
+
+        raise R2StorageError(
+            f"Failed to download file from R2 after {max_retries} attempts: {str(last_error)}"
+        )
+
     async def delete_file(self, bucket_name: str, r2_path: str) -> None:
         """
         Delete file from R2 storage.

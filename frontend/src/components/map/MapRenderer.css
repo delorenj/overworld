@@ -1,0 +1,140 @@
+/**
+ * MapRenderer Component Styles
+ *
+ * Styles for the PixiJS-based interactive map renderer.
+ */
+
+.map-renderer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background-color: #1a1a2e;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+/* Canvas container */
+.map-renderer__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.map-renderer__canvas canvas {
+  display: block;
+}
+
+/* Loading overlay */
+.map-renderer__loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background-color: rgba(26, 26, 46, 0.9);
+  color: #ffffff;
+  font-size: 14px;
+  z-index: 100;
+}
+
+.map-renderer__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #4a90d9;
+  border-radius: 50%;
+  animation: map-spinner 0.8s linear infinite;
+}
+
+@keyframes map-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Error message */
+.map-renderer__error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background-color: rgba(220, 53, 69, 0.9);
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 100;
+}
+
+.map-renderer__error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: #ffffff;
+  color: #dc3545;
+  font-weight: bold;
+  border-radius: 50%;
+}
+
+/* Debug overlay */
+.map-renderer__debug {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #00ff00;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 4px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.map-renderer__debug div {
+  white-space: nowrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .map-renderer {
+    min-height: 300px;
+  }
+
+  .map-renderer__debug {
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+}
+
+/* Touch device adjustments */
+@media (pointer: coarse) {
+  .map-renderer__canvas {
+    touch-action: none;
+  }
+}
+
+/* Fullscreen mode */
+.map-renderer--fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  z-index: 9999;
+}

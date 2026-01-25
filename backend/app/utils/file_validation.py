@@ -2,7 +2,6 @@
 
 from typing import Literal
 
-
 # Magic number signatures for file type detection
 PDF_SIGNATURE = b"%PDF-"
 MARKDOWN_SIGNATURES = [
@@ -40,8 +39,14 @@ async def validate_file_type(file_content: bytes, filename: str) -> FileType:
         FileType: Either "markdown" or "pdf"
 
     Raises:
-        FileValidationError: If file type is not supported
+        FileValidationError: If file type is not supported or file is empty
     """
+    # Check for empty file
+    if not file_content or len(file_content) == 0:
+        raise FileValidationError(
+            "Empty file provided. Please upload a non-empty file."
+        )
+
     # Check for PDF signature
     if file_content.startswith(PDF_SIGNATURE):
         return "pdf"

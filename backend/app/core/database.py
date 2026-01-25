@@ -76,3 +76,29 @@ async def close_db() -> None:
     """Close database connections."""
     engine = get_engine()
     await engine.dispose()
+
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Context manager for getting a database session outside of FastAPI.
+
+    Usage:
+        async with get_async_session() as session:
+            result = await session.execute(query)
+
+    For FastAPI route dependencies, use get_db() instead.
+    """
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

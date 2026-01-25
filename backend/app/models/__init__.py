@@ -1,6 +1,7 @@
 """SQLAlchemy models for Overworld."""
 
 from app.models.document import Document
+from app.models.export import Export, ExportFormat, ExportStatus
 from app.models.generation_job import GenerationJob, JobStatus
 from app.models.map import Map
 from app.models.theme import Theme
@@ -18,4 +19,7 @@ __all__ = [
     "JobStatus",
     "Theme",
     "Document",
+    "Export",
+    "ExportFormat",
+    "ExportStatus",
 ]

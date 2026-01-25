@@ -1,0 +1,177 @@
+/**
+ * MapPage Styles
+ *
+ * Styles for the map demo page.
+ */
+
+.map-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #0f0f1a;
+  color: #ffffff;
+}
+
+.map-page__header {
+  padding: 24px;
+  text-align: center;
+  background-color: #1a1a2e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.map-page__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.map-page__subtitle {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #a0a0b0;
+}
+
+.map-page__content {
+  flex: 1;
+  display: flex;
+  position: relative;
+  padding: 24px;
+  gap: 24px;
+}
+
+.map-page__renderer {
+  flex: 1;
+  min-height: 600px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Info Panel */
+.map-page__info-panel {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 100;
+}
+
+.info-panel {
+  width: 280px;
+  background-color: rgba(26, 26, 46, 0.95);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.info-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-panel__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.info-panel__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: #a0a0b0;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.info-panel__close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.info-panel__close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.info-panel__content {
+  padding: 16px;
+}
+
+.info-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.info-label {
+  font-size: 13px;
+  color: #a0a0b0;
+  flex-shrink: 0;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #ffffff;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Footer */
+.map-page__footer {
+  padding: 16px 24px;
+  text-align: center;
+  background-color: #1a1a2e;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.map-page__footer p {
+  margin: 0;
+  font-size: 12px;
+  color: #606070;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .map-page__header {
+    padding: 16px;
+  }
+
+  .map-page__title {
+    font-size: 22px;
+  }
+
+  .map-page__content {
+    padding: 16px;
+  }
+
+  .map-page__renderer {
+    min-height: 400px;
+  }
+
+  .map-page__info-panel {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+  }
+
+  .info-panel {
+    width: auto;
+  }
+}

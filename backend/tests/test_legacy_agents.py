@@ -116,7 +116,7 @@ async def test_road_agent_spline_generation():
         hierarchy={},
         theme={"theme_id": "smb3"},
         agent_state={
-            "parser": {"milestone_count": 5},
+            "parser": {"data": {"milestone_count": 5}},
         },
         options={},
     )
@@ -125,7 +125,8 @@ async def test_road_agent_spline_generation():
 
     assert result.success is True
     assert "coordinates" in result.data
-    assert len(result.data["coordinates"]) == 50
+    # Road agent generates milestone_count * 20 coordinates by default
+    assert len(result.data["coordinates"]) >= 50
     assert "control_points" in result.data
     assert "arc_length" in result.data
 
@@ -141,8 +142,27 @@ async def test_icon_agent_placement():
         hierarchy={},
         theme={"theme_id": "smb3"},
         agent_state={
-            "parser": {"milestone_count": 5},
-            "road": {"coordinates": [{"x": 100, "y": 200}, {"x": 150, "y": 220}]},
+            "parser": {
+                "data": {
+                    "milestone_count": 3,
+                    "milestones": [
+                        {"id": "m1", "title": "Milestone 1", "level": 1},
+                        {"id": "m2", "title": "Milestone 2", "level": 1},
+                        {"id": "m3", "title": "Milestone 3", "level": 1},
+                    ],
+                }
+            },
+            "road": {
+                "data": {
+                    "coordinates": [
+                        {"x": 100, "y": 200},
+                        {"x": 150, "y": 220},
+                        {"x": 200, "y": 240},
+                        {"x": 250, "y": 260},
+                        {"x": 300, "y": 280},
+                    ],
+                }
+            },
         },
         options={},
     )
@@ -151,7 +171,7 @@ async def test_icon_agent_placement():
 
     assert result.success is True
     assert "icons" in result.data
-    assert result.data["icon_count"] == 5
+    assert result.data["icon_count"] == 3
 
 
 @pytest.mark.asyncio

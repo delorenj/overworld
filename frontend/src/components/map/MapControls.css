@@ -1,0 +1,282 @@
+/**
+ * MapControls Component Styles
+ *
+ * Styles for the map navigation controls panel.
+ */
+
+.map-controls {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* Position variants */
+.map-controls--top-left {
+  top: 16px;
+  left: 16px;
+}
+
+.map-controls--top-right {
+  top: 16px;
+  right: 16px;
+}
+
+.map-controls--bottom-left {
+  bottom: 16px;
+  left: 16px;
+}
+
+.map-controls--bottom-right {
+  bottom: 16px;
+  right: 16px;
+}
+
+/* Control group */
+.map-controls__group {
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(26, 26, 46, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+/* Zoom controls */
+.map-controls__zoom {
+  align-items: center;
+}
+
+.map-controls__zoom-level {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #a0a0b0;
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 48px;
+}
+
+/* Button styles */
+.map-controls__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  background-color: transparent;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.map-controls__button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.map-controls__button:active {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.map-controls__button--active {
+  background-color: rgba(74, 144, 217, 0.3);
+  color: #4a90d9;
+}
+
+.map-controls__button svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Navigation controls */
+.map-controls__nav {
+  flex-direction: row;
+}
+
+.map-controls__nav .map-controls__button {
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.map-controls__nav .map-controls__button:last-child {
+  border-right: none;
+}
+
+/* Layer controls */
+.map-controls__layers {
+  position: relative;
+}
+
+/* Layer menu dropdown */
+.map-controls__layer-menu {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  min-width: 160px;
+  background-color: rgba(26, 26, 46, 0.98);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.map-controls--top-left .map-controls__layer-menu,
+.map-controls--bottom-left .map-controls__layer-menu {
+  right: auto;
+  left: calc(100% + 8px);
+}
+
+.map-controls__layer-menu-header {
+  padding: 10px 12px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a0a0b0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.map-controls__layer-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.map-controls__layer-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.map-controls__layer-item input[type='checkbox'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.map-controls__layer-checkbox {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.map-controls__layer-item input:checked + .map-controls__layer-checkbox {
+  background-color: #4a90d9;
+  border-color: #4a90d9;
+}
+
+.map-controls__layer-checkbox::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.map-controls__layer-item input:checked + .map-controls__layer-checkbox::after {
+  opacity: 1;
+}
+
+.map-controls__layer-label {
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.map-controls__layer-divider {
+  height: 1px;
+  margin: 4px 0;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .map-controls--top-right,
+  .map-controls--bottom-right {
+    right: 8px;
+  }
+
+  .map-controls--top-left,
+  .map-controls--bottom-left {
+    left: 8px;
+  }
+
+  .map-controls--top-left,
+  .map-controls--top-right {
+    top: 8px;
+  }
+
+  .map-controls--bottom-left,
+  .map-controls--bottom-right {
+    bottom: 8px;
+  }
+
+  .map-controls__button {
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+  }
+
+  .map-controls__button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .map-controls__zoom-level {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+
+  .map-controls__layer-menu {
+    min-width: 140px;
+  }
+
+  .map-controls__layer-item {
+    padding: 8px 10px;
+  }
+
+  .map-controls__layer-label {
+    font-size: 12px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .map-controls__group {
+    background-color: #000000;
+    border: 2px solid #ffffff;
+  }
+
+  .map-controls__button:hover {
+    background-color: #ffffff;
+    color: #000000;
+  }
+
+  .map-controls__layer-checkbox {
+    border-color: #ffffff;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .map-controls__button,
+  .map-controls__layer-checkbox,
+  .map-controls__layer-checkbox::after,
+  .map-controls__layer-item {
+    transition: none;
+  }
+}

@@ -38,8 +38,14 @@ class Settings(BaseSettings):
 
     # External Services
     OPENROUTER_API_KEY: str = ""
-    STRIPE_API_KEY: str = ""
+
+    # Stripe Payment Integration
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+
+    # Anonymous User Rate Limiting
+    ANONYMOUS_DAILY_LIMIT: int = 3  # Free map generations per day for anonymous users
 
     # Cloudflare R2
     R2_ACCESS_KEY_ID: str = ""
@@ -56,6 +62,17 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "Overworld"
     VERSION: str = "0.1.0"
+
+    # OAuth2 - Google
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
+    # OAuth2 - GitHub
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+
+    # OAuth2 - Common
+    OAUTH_REDIRECT_URL: str = "http://localhost:8000/api/v1/auth"  # Base URL for callbacks
 
 
 # Global settings instance

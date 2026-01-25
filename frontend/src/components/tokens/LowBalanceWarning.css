@@ -1,0 +1,250 @@
+/**
+ * LowBalanceWarning Component Styles
+ */
+
+.low-balance-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--warning-bg, #fffbeb);
+  border: 1px solid var(--warning-border, #fcd34d);
+  border-radius: 8px;
+  position: relative;
+}
+
+.low-balance-warning--insufficient {
+  background: var(--danger-bg, #fef2f2);
+  border-color: var(--danger-border, #fca5a5);
+}
+
+.low-balance-warning__icon {
+  flex-shrink: 0;
+  color: var(--warning-color, #d97706);
+}
+
+.low-balance-warning--insufficient .low-balance-warning__icon {
+  color: var(--danger-color, #dc2626);
+}
+
+.low-balance-warning__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.low-balance-warning__title {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--warning-text, #92400e);
+}
+
+.low-balance-warning--insufficient .low-balance-warning__title {
+  color: var(--danger-text, #991b1b);
+}
+
+.low-balance-warning__message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--warning-text-light, #a16207);
+  line-height: 1.5;
+}
+
+.low-balance-warning--insufficient .low-balance-warning__message {
+  color: var(--danger-text-light, #b91c1c);
+}
+
+.low-balance-warning__message strong {
+  font-weight: 600;
+}
+
+.low-balance-warning__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.low-balance-warning__buy-btn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  background: var(--warning-color, #d97706);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.low-balance-warning__buy-btn:hover {
+  background: var(--warning-hover, #b45309);
+}
+
+.low-balance-warning--insufficient .low-balance-warning__buy-btn {
+  background: var(--danger-color, #dc2626);
+}
+
+.low-balance-warning--insufficient .low-balance-warning__buy-btn:hover {
+  background: var(--danger-hover, #b91c1c);
+}
+
+.low-balance-warning__dismiss {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.25rem;
+  background: transparent;
+  border: none;
+  color: var(--warning-color, #d97706);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.low-balance-warning__dismiss:hover {
+  opacity: 1;
+}
+
+/* Insufficient Balance Modal */
+.insufficient-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.insufficient-modal {
+  max-width: 400px;
+  width: 90%;
+  padding: 2rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  text-align: center;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.insufficient-modal__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  background: var(--danger-bg, #fef2f2);
+  color: var(--danger-color, #dc2626);
+}
+
+.insufficient-modal__title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+
+.insufficient-modal__message {
+  margin: 0 0 1.5rem 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary, #6b7280);
+  line-height: 1.5;
+}
+
+.insufficient-modal__balance {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary, #f9fafb);
+  border-radius: 8px;
+}
+
+.insufficient-modal__balance-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.375rem 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.insufficient-modal__balance-row--shortfall {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  font-weight: 500;
+}
+
+.insufficient-modal__amount {
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  font-variant-numeric: tabular-nums;
+}
+
+.insufficient-modal__amount--available {
+  color: var(--warning-color, #d97706);
+}
+
+.insufficient-modal__amount--shortfall {
+  color: var(--danger-color, #dc2626);
+}
+
+.insufficient-modal__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.insufficient-modal__buy-btn {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-color, #2563eb);
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.insufficient-modal__buy-btn:hover {
+  background: var(--primary-hover, #1d4ed8);
+}
+
+.insufficient-modal__close-btn {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.insufficient-modal__close-btn:hover {
+  background: var(--bg-hover, #f3f4f6);
+  border-color: var(--border-hover, #d1d5db);
+}

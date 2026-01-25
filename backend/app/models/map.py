@@ -59,6 +59,9 @@ class Map(Base):
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(
         "GenerationJob", back_populates="map", cascade="all, delete-orphan"
     )
+    exports: Mapped[list["Export"]] = relationship(
+        "Export", back_populates="map", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Map(id={self.id}, name={self.name})>"

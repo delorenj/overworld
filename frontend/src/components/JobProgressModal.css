@@ -1,0 +1,379 @@
+/**
+ * JobProgressModal Component Styles
+ *
+ * Styles for the job progress modal with animations and state variants.
+ */
+
+/* Backdrop */
+.job-progress-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  animation: backdrop-fade-in 0.2s ease-out;
+}
+
+@keyframes backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Modal */
+.job-progress-modal {
+  background-color: white;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  max-width: 28rem;
+  overflow: hidden;
+  animation: modal-slide-up 0.3s ease-out;
+}
+
+@keyframes modal-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header */
+.job-progress-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.job-progress-modal-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.job-progress-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: none;
+  border-radius: 0.375rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.job-progress-modal-close:hover {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+/* Content */
+.job-progress-modal-content {
+  padding: 1.5rem;
+}
+
+/* Status indicators */
+.job-progress-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+.job-progress-status--connecting {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.job-progress-status--reconnecting {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.job-progress-status--error {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+/* Spinner */
+.job-progress-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+.job-progress-spinner--sm {
+  width: 0.875rem;
+  height: 0.875rem;
+  border-width: 1.5px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Status badge */
+.job-progress-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  margin-bottom: 1rem;
+}
+
+.job-progress-badge--pending {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.job-progress-badge--processing {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.job-progress-badge--completed {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.job-progress-badge--failed {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+.job-progress-badge--cancelled {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+/* Progress bar wrapper */
+.job-progress-bar-wrapper {
+  margin-bottom: 1rem;
+}
+
+/* Current stage */
+.job-progress-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4b5563;
+  margin-bottom: 0.5rem;
+}
+
+/* Progress message */
+.job-progress-message {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+  text-align: center;
+}
+
+/* Icon */
+.job-progress-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+
+/* Error state */
+.job-progress-error {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+}
+
+.job-progress-error .job-progress-icon {
+  color: #dc2626;
+}
+
+.job-progress-error-title {
+  font-weight: 600;
+  color: #991b1b;
+  margin: 0 0 0.25rem 0;
+}
+
+.job-progress-error-message {
+  font-size: 0.875rem;
+  color: #b91c1c;
+  margin: 0;
+}
+
+.job-progress-error-retry {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0.5rem 0 0 0;
+}
+
+/* Success state */
+.job-progress-success {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+}
+
+.job-progress-success .job-progress-icon {
+  color: #16a34a;
+}
+
+.job-progress-success-title {
+  font-weight: 600;
+  color: #166534;
+  margin: 0 0 0.25rem 0;
+}
+
+.job-progress-success-message {
+  font-size: 0.875rem;
+  color: #15803d;
+  margin: 0;
+}
+
+/* Footer */
+.job-progress-modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+}
+
+/* Buttons */
+.job-progress-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.job-progress-btn--primary {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.job-progress-btn--primary:hover {
+  background-color: #2563eb;
+}
+
+.job-progress-btn--secondary {
+  background-color: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.job-progress-btn--secondary:hover {
+  background-color: #f9fafb;
+}
+
+.job-progress-btn--ghost {
+  background: none;
+  color: #6b7280;
+}
+
+.job-progress-btn--ghost:hover {
+  color: #374151;
+  background-color: #f3f4f6;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .job-progress-modal {
+    background-color: #1f2937;
+  }
+
+  .job-progress-modal-header {
+    border-bottom-color: #374151;
+  }
+
+  .job-progress-modal-title {
+    color: #f9fafb;
+  }
+
+  .job-progress-modal-close {
+    color: #9ca3af;
+  }
+
+  .job-progress-modal-close:hover {
+    background-color: #374151;
+    color: #f3f4f6;
+  }
+
+  .job-progress-stage {
+    color: #d1d5db;
+  }
+
+  .job-progress-message {
+    color: #9ca3af;
+  }
+
+  .job-progress-modal-footer {
+    background-color: #111827;
+    border-top-color: #374151;
+  }
+
+  .job-progress-btn--secondary {
+    background-color: #374151;
+    color: #f3f4f6;
+    border-color: #4b5563;
+  }
+
+  .job-progress-btn--secondary:hover {
+    background-color: #4b5563;
+  }
+
+  .job-progress-btn--ghost {
+    color: #9ca3af;
+  }
+
+  .job-progress-btn--ghost:hover {
+    color: #f3f4f6;
+    background-color: #374151;
+  }
+}

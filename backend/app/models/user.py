@@ -60,6 +60,9 @@ class User(Base):
     documents: Mapped[list["Document"]] = relationship(
         "Document", back_populates="user", cascade="all, delete-orphan"
     )
+    exports: Mapped[list["Export"]] = relationship(
+        "Export", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email})>"
