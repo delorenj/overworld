@@ -84,7 +84,7 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/ws`)"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`) || PathPrefix(`/redoc`) || PathPrefix(`/ws`)"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
