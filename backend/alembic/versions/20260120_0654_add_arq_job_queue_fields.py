@@ -59,11 +59,8 @@ def upgrade() -> None:
         sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
     )
 
-    # Add document_id column (was missing, needed for document-triggered jobs)
-    op.add_column(
-        "generation_jobs",
-        sa.Column("document_id", sa.UUID(), nullable=True),
-    )
+    # Note: document_id column already added in migration 7a66a7d54df2
+    # No need to add it again
 
     # Create unique index on arq_job_id
     op.create_index(
@@ -73,23 +70,8 @@ def upgrade() -> None:
         unique=True,
     )
 
-    # Create index on document_id for lookups
-    op.create_index(
-        "ix_generation_jobs_document_id",
-        "generation_jobs",
-        ["document_id"],
-        unique=False,
-    )
-
-    # Add foreign key constraint for document_id
-    op.create_foreign_key(
-        "fk_generation_jobs_document_id",
-        "generation_jobs",
-        "documents",
-        ["document_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    # Note: document_id index and FK already created in migration 7a66a7d54df2
+    # No need to recreate them
 
     # Add CANCELLED to the jobstatus enum
     # PostgreSQL requires special handling for adding enum values
@@ -97,17 +79,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Remove foreign key
-    op.drop_constraint(
-        "fk_generation_jobs_document_id", "generation_jobs", type_="foreignkey"
-    )
+    # Note: Don't remove document_id FK/index - they belong to migration 7a66a7d54df2
 
     # Remove indexes
-    op.drop_index("ix_generation_jobs_document_id", table_name="generation_jobs")
     op.drop_index("ix_generation_jobs_arq_job_id", table_name="generation_jobs")
 
-    # Remove columns
-    op.drop_column("generation_jobs", "document_id")
+    # Remove columns (excluding document_id)
     op.drop_column("generation_jobs", "cancelled_at")
     op.drop_column("generation_jobs", "error_code")
     op.drop_column("generation_jobs", "next_retry_at")

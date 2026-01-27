@@ -1,7 +1,7 @@
 """Create exports table
 
 Revision ID: 20260120_exports
-Revises: 20260120_0654_add_arq_job_queue_fields
+Revises: a1b2c3d4e5f6
 Create Date: 2026-01-20 17:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '20260120_exports'
-down_revision = '20260120_0654_add_arq_job_queue_fields'
+down_revision = 'a1b2c3d4e5f6'
 branch_labels = None
 depends_on = None
 

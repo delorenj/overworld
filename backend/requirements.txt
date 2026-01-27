@@ -47,3 +47,4 @@ structlog==24.1.0
 
 # Utilities
 python-dotenv==1.0.0
+pypdf==4.0.1  # For PDF parsing in document upload
