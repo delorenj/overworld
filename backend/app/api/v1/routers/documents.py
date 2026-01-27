@@ -136,7 +136,7 @@ async def upload_document(
 
         # Return response
         return DocumentUploadResponse(
-            document_id=document.id,
+            document_id=str(document.id),
             filename=document.filename,
             size_bytes=document.file_size_bytes,
             mime_type=document.mime_type,
@@ -217,7 +217,7 @@ async def list_documents(
 
         document_responses.append(
             DocumentResponse(
-                id=doc.id,
+                id=str(doc.id),
                 user_id=doc.user_id,
                 filename=doc.filename,
                 file_size_bytes=doc.file_size_bytes,
@@ -291,7 +291,7 @@ async def get_document(
         fresh_url = document.r2_url  # Fallback to stored URL
 
     return DocumentResponse(
-        id=document.id,
+        id=str(document.id),
         user_id=document.user_id,
         filename=document.filename,
         file_size_bytes=document.file_size_bytes,
