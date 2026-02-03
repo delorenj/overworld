@@ -5,6 +5,7 @@
  * Handles login, logout, and user session management.
  */
 
+import axios from 'axios';
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type {
   User,
@@ -76,6 +77,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>({
     user: null,
+    token: null,
     isAuthenticated: false,
     isLoading: true,
     error: null,
@@ -89,10 +91,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         // Check localStorage for existing session
         const savedUser = localStorage.getItem('overworld_user');
-        if (savedUser) {
+        const savedToken = localStorage.getItem('overworld_token');
+
+        if (savedUser && savedToken) {
           const user = JSON.parse(savedUser);
           setState({
             user,
+            token: savedToken,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -101,8 +106,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // In development, auto-login with mock user
           if (import.meta.env.DEV) {
             localStorage.setItem('overworld_user', JSON.stringify(MOCK_USER));
+            // No token for mock user
             setState({
               user: MOCK_USER,
+              token: null,
               isAuthenticated: true,
               isLoading: false,
               error: null,
@@ -130,9 +137,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // TODO: Replace with actual API call
-      // const response = await axios.post(`${API_BASE_URL}/v1/auth/login`, credentials);
-      // const user = response.data.user;
+      // Check if we should use real API or mock
+      if (credentials.email !== 'demo@overworld.dev') {
+        const response = await axios.post(`${API_BASE_URL}/v1/auth/login`, credentials);
+        const { access_token } = response.data;
+
+        const token = access_token;
+        localStorage.setItem('overworld_token', token);
+
+        // Fetch user details
+        const meResponse = await axios.get(`${API_BASE_URL}/v1/auth/me`, {
+           headers: { Authorization: `Bearer ${token}` }
+        });
+        const userData = meResponse.data;
+
+        localStorage.setItem('overworld_user', JSON.stringify(userData));
+
+        setState({
+          user: userData,
+          token: token,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
 
       // Mock login for development
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -141,12 +170,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         localStorage.setItem('overworld_user', JSON.stringify(MOCK_USER));
         setState({
           user: MOCK_USER,
+          token: null,
           isAuthenticated: true,
           isLoading: false,
           error: null,
         });
-      } else {
-        throw new Error('Invalid credentials');
       }
     } catch (error: any) {
       setState((prev) => ({
@@ -183,12 +211,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
    */
   const logout = useCallback(async () => {
     try {
-      // TODO: Call logout API endpoint
-      // await axios.post(`${API_BASE_URL}/v1/auth/logout`);
+      if (state.token) {
+        await axios.post(
+          `${API_BASE_URL}/v1/auth/logout`,
+          {},
+          { headers: { Authorization: `Bearer ${state.token}` } }
+        );
+      }
 
       localStorage.removeItem('overworld_user');
+      localStorage.removeItem('overworld_token');
       setState({
         user: null,
+        token: null,
         isAuthenticated: false,
         isLoading: false,
         error: null,
@@ -197,14 +232,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Logout error:', error);
       // Still clear local state even if API call fails
       localStorage.removeItem('overworld_user');
+      localStorage.removeItem('overworld_token');
       setState({
         user: null,
+        token: null,
         isAuthenticated: false,
         isLoading: false,
         error: null,
       });
     }
-  }, []);
+  }, [state.token]);
 
   /**
    * Update user profile
@@ -331,16 +368,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /**
    * Disconnect OAuth account
    */
-  const disconnectAccount = useCallback(async (_provider: string) => {
+  const disconnectAccount = useCallback(async (provider: string) => {
     try {
-      // TODO: Replace with actual API call
-      // await axios.delete(`${API_BASE_URL}/v1/users/me/accounts/${_provider}`);
+      if (!state.token) {
+        // If using mock user or no token, simulate delay
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return;
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await axios.delete(`${API_BASE_URL}/v1/users/me/accounts/${provider}`, {
+        headers: {
+          Authorization: `Bearer ${state.token}`,
+        },
+      });
     } catch (error: any) {
       throw new Error(error.message || 'Failed to disconnect account');
     }
-  }, []);
+  }, [state.token]);
 
   const value: AuthContextValue = {
     ...state,
