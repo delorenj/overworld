@@ -64,6 +64,8 @@ class TestDisconnectAccountEndpoint:
         async def override_get_db():
             yield mock_db
 
+        # Save existing overrides
+        original_overrides = app.dependency_overrides.copy()
         app.dependency_overrides[get_db] = override_get_db
 
         try:
@@ -79,7 +81,8 @@ class TestDisconnectAccountEndpoint:
             assert test_user_linked.oauth_id is None
             mock_db.commit.assert_called_once()
         finally:
-            del app.dependency_overrides[get_db]
+            # Restore original overrides
+            app.dependency_overrides = original_overrides
 
     @pytest.mark.asyncio
     @patch("app.api.deps.get_auth_service")

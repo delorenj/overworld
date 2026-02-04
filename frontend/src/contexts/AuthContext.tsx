@@ -90,6 +90,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const checkSession = async () => {
       try {
         // Check localStorage for existing session
+        // NOTE: Storing JWTs in localStorage is vulnerable to XSS attacks.
+        // Consider using HttpOnly secure cookies for production if XSS is a concern.
+        // This approach was chosen for simplicity and to support stateless API architecture.
         const savedUser = localStorage.getItem('overworld_user');
         const savedToken = localStorage.getItem('overworld_token');
 
@@ -143,7 +146,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const { access_token } = response.data;
 
         const token = access_token;
-        localStorage.setItem('overworld_token', token);
 
         // Fetch user details
         const meResponse = await axios.get(`${API_BASE_URL}/v1/auth/me`, {
@@ -151,6 +153,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
         const userData = meResponse.data;
 
+        // Only persist after both requests succeed
+        localStorage.setItem('overworld_token', token);
         localStorage.setItem('overworld_user', JSON.stringify(userData));
 
         setState({
@@ -177,6 +181,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
       }
     } catch (error: any) {
+      // Clean up any partial state on error
+      localStorage.removeItem('overworld_token');
+      localStorage.removeItem('overworld_user');
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -317,8 +324,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       localStorage.removeItem('overworld_user');
+      localStorage.removeItem('overworld_token');
       setState({
         user: null,
+        token: null,
         isAuthenticated: false,
         isLoading: false,
         error: null,
