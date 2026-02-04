@@ -84,6 +84,7 @@ class TestDisconnectAccountEndpoint:
             # Restore original overrides
             app.dependency_overrides = original_overrides
 
+
     @pytest.mark.asyncio
     @patch("app.api.deps.get_auth_service")
     async def test_disconnect_not_linked(self, mock_get_service, test_user_linked):
