@@ -6,6 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import * as authApi from '../services/authApi';
 import type {
   User,
   AuthState,
@@ -130,24 +131,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // TODO: Replace with actual API call
-      // const response = await axios.post(`${API_BASE_URL}/v1/auth/login`, credentials);
-      // const user = response.data.user;
+      const { access_token, refresh_token } = await authApi.login(credentials);
 
-      // Mock login for development
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      localStorage.setItem('overworld_access_token', access_token);
+      localStorage.setItem('overworld_refresh_token', refresh_token);
 
-      if (credentials.email === 'demo@overworld.dev') {
-        localStorage.setItem('overworld_user', JSON.stringify(MOCK_USER));
-        setState({
-          user: MOCK_USER,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null,
-        });
-      } else {
-        throw new Error('Invalid credentials');
-      }
+      const backendUser = await authApi.getCurrentUser(access_token);
+
+      const user: User = {
+        id: backendUser.id.toString(),
+        email: backendUser.email,
+        name: backendUser.email.split('@')[0],
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${backendUser.email}`,
+        createdAt: backendUser.created_at,
+        updatedAt: backendUser.updated_at || backendUser.created_at,
+      };
+
+      localStorage.setItem('overworld_user', JSON.stringify(user));
+      setState({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
     } catch (error: any) {
       setState((prev) => ({
         ...prev,
@@ -183,20 +189,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
    */
   const logout = useCallback(async () => {
     try {
-      // TODO: Call logout API endpoint
-      // await axios.post(`${API_BASE_URL}/v1/auth/logout`);
-
-      localStorage.removeItem('overworld_user');
-      setState({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: null,
-      });
+      const token = localStorage.getItem('overworld_access_token');
+      if (token) {
+        await authApi.logout(token);
+      }
     } catch (error: any) {
       console.error('Logout error:', error);
-      // Still clear local state even if API call fails
+    } finally {
       localStorage.removeItem('overworld_user');
+      localStorage.removeItem('overworld_access_token');
+      localStorage.removeItem('overworld_refresh_token');
+
       setState({
         user: null,
         isAuthenticated: false,
