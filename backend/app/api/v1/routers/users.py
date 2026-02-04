@@ -38,8 +38,7 @@ async def disconnect_account(
         HTTPException: 400 if trying to disconnect the only login method
     """
     # Check if the provider matches the user's linked provider
-    normalized_provider = provider.lower()
-    if current_user.oauth_provider != normalized_provider:
+    if current_user.oauth_provider != provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"User is not linked to {provider}",
@@ -54,7 +53,7 @@ async def disconnect_account(
         )
 
     # Disconnect the account
-    logger.info(f"Disconnecting {normalized_provider} account for user {current_user.id}")
+    logger.info(f"Disconnecting {provider} account for user {current_user.id}")
 
     current_user.oauth_provider = None
     current_user.oauth_id = None
