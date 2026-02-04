@@ -79,7 +79,7 @@ class TestDisconnectAccountEndpoint:
             assert test_user_linked.oauth_id is None
             mock_db.commit.assert_called_once()
         finally:
-            app.dependency_overrides = {}
+            del app.dependency_overrides[get_db]
 
     @pytest.mark.asyncio
     @patch("app.api.deps.get_auth_service")
