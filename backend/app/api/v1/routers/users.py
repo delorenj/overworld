@@ -1,7 +1,6 @@
 """API router for user management endpoints."""
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
