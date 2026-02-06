@@ -140,10 +140,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Check if we should use real API or mock
       if (credentials.email !== 'demo@overworld.dev') {
         const response = await axios.post(`${API_BASE_URL}/v1/auth/login`, credentials);
-        const { access_token } = response.data;
+        const { access_token, refresh_token } = response.data;
 
         const token = access_token;
         localStorage.setItem('overworld_token', token);
+        if (refresh_token) {
+          localStorage.setItem('overworld_refresh_token', refresh_token);
+        }
 
         // Fetch user details
         const meResponse = await axios.get(`${API_BASE_URL}/v1/auth/me`, {
@@ -212,15 +215,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(async () => {
     try {
       if (state.token) {
+        const refreshToken = localStorage.getItem('overworld_refresh_token');
+        const config: {
+          headers: { Authorization: string };
+          params?: { refresh_token: string };
+        } = { 
+          headers: { Authorization: `Bearer ${state.token}` }
+        };
+        
+        // Only include refresh_token param if we have one
+        if (refreshToken) {
+          config.params = { refresh_token: refreshToken };
+        }
+        
         await axios.post(
           `${API_BASE_URL}/v1/auth/logout`,
           {},
-          { headers: { Authorization: `Bearer ${state.token}` } }
+          config
         );
       }
 
       localStorage.removeItem('overworld_user');
       localStorage.removeItem('overworld_token');
+      localStorage.removeItem('overworld_refresh_token');
       setState({
         user: null,
         token: null,
@@ -233,6 +250,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // Still clear local state even if API call fails
       localStorage.removeItem('overworld_user');
       localStorage.removeItem('overworld_token');
+      localStorage.removeItem('overworld_refresh_token');
       setState({
         user: null,
         token: null,
@@ -317,8 +335,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       localStorage.removeItem('overworld_user');
+      localStorage.removeItem('overworld_token');
+      localStorage.removeItem('overworld_refresh_token');
       setState({
         user: null,
+        token: null,
         isAuthenticated: false,
         isLoading: false,
         error: null,
