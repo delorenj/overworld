@@ -144,7 +144,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         const token = access_token;
         localStorage.setItem('overworld_token', token);
-        localStorage.setItem('overworld_refresh_token', refresh_token);
+        if (refresh_token) {
+          localStorage.setItem('overworld_refresh_token', refresh_token);
+        }
 
         // Fetch user details
         const meResponse = await axios.get(`${API_BASE_URL}/v1/auth/me`, {
@@ -214,13 +216,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       if (state.token) {
         const refreshToken = localStorage.getItem('overworld_refresh_token');
+        const config: any = { 
+          headers: { Authorization: `Bearer ${state.token}` }
+        };
+        
+        // Only include refresh_token param if we have one
+        if (refreshToken) {
+          config.params = { refresh_token: refreshToken };
+        }
+        
         await axios.post(
           `${API_BASE_URL}/v1/auth/logout`,
           {},
-          { 
-            headers: { Authorization: `Bearer ${state.token}` },
-            params: { refresh_token: refreshToken }
-          }
+          config
         );
       }
 
