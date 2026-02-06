@@ -216,7 +216,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       if (state.token) {
         const refreshToken = localStorage.getItem('overworld_refresh_token');
-        const config: any = { 
+        const config: {
+          headers: { Authorization: string };
+          params?: { refresh_token: string };
+        } = { 
           headers: { Authorization: `Bearer ${state.token}` }
         };
         
