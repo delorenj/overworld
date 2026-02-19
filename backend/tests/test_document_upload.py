@@ -10,8 +10,17 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import Base, get_engine, get_session_factory
+from app.api.deps import get_current_user
 from app.main import app
 from app.models import User
+
+
+@pytest.fixture(autouse=True)
+def override_auth(test_user):
+    """Override get_current_user dependency for all tests."""
+    app.dependency_overrides[get_current_user] = lambda: test_user
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture

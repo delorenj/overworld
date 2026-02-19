@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db, get_session_factory
+from app.api.deps import get_current_user, get_db
+from app.core.database import get_session_factory
 from app.models import Document
 from app.models.document import DocumentStatus
+from app.models.user import User
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
@@ -43,6 +45,7 @@ def compute_content_hash(content: bytes) -> str:
 )
 async def upload_document(
     file: UploadFile = File(..., description="Markdown or PDF file to upload"),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentUploadResponse:
     """
     Upload a document file (markdown or PDF).
@@ -96,9 +99,7 @@ async def upload_document(
     mime_type = get_mime_type(file_type)
     content_hash = compute_content_hash(file_content)
 
-    # For now, use hardcoded user_id (will be replaced with actual auth in STORY-010)
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder (matches User model Integer primary key)
+    user_id = current_user.id
 
     # Upload to R2
     r2_service = get_r2_service()
@@ -157,6 +158,7 @@ async def list_documents(
     skip: int = Query(0, ge=0, description="Number of documents to skip"),
     limit: int = Query(20, ge=1, le=100, description="Maximum number of documents to return"),
     status_filter: str | None = Query(None, description="Filter by document status"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentListResponse:
     """
@@ -171,8 +173,7 @@ async def list_documents(
     Returns:
         DocumentListResponse: List of documents with pagination info
     """
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder
+    user_id = current_user.id
 
     # Build query
     query = select(Document).where(Document.user_id == user_id)
@@ -247,6 +248,7 @@ async def list_documents(
 )
 async def get_document(
     document_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
     """
@@ -262,8 +264,7 @@ async def get_document(
     Raises:
         HTTPException: 404 if document not found
     """
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder
+    user_id = current_user.id
 
     query = select(Document).where(
         Document.id == document_id,
@@ -313,6 +314,7 @@ async def get_document(
 )
 async def delete_document(
     document_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
@@ -326,8 +328,7 @@ async def delete_document(
         HTTPException: 404 if document not found
         HTTPException: 500 if deletion from storage fails
     """
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder
+    user_id = current_user.id
 
     query = select(Document).where(
         Document.id == document_id,
@@ -369,6 +370,7 @@ async def delete_document(
 async def get_download_url(
     document_id: UUID,
     expiry_seconds: int = Query(3600, ge=60, le=86400, description="URL expiry time in seconds"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -386,8 +388,7 @@ async def get_download_url(
         HTTPException: 404 if document not found
         HTTPException: 500 if URL generation fails
     """
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder
+    user_id = current_user.id
 
     query = select(Document).where(
         Document.id == document_id,
@@ -440,6 +441,7 @@ async def extract_hierarchy(
     use_ai_fallback: bool = Query(
         True, description="Use AI inference if structured extraction fails"
     ),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HierarchyExtractionResponse:
     """
@@ -471,8 +473,7 @@ async def extract_hierarchy(
         HTTPException: 400 if document is still processing
         HTTPException: 500 if extraction fails
     """
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder
+    user_id = current_user.id
 
     # Get document
     query = select(Document).where(
@@ -516,6 +517,7 @@ async def extract_hierarchy(
 )
 async def get_hierarchy(
     document_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """
@@ -532,8 +534,7 @@ async def get_hierarchy(
         HTTPException: 404 if document not found
         HTTPException: 400 if document not yet processed
     """
-    # TODO: Replace with actual authenticated user_id from JWT token
-    user_id = 1  # Placeholder
+    user_id = current_user.id
 
     # Get document
     query = select(Document).where(
