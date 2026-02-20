@@ -131,6 +131,7 @@ async def create_job_via_db(document_id: str):
         if line.strip().isdigit():
             job_id = int(line.strip())
             print(f"✅ Job created: #{job_id}")
+            print("   Status: PENDING (0%)")
             return job_id
     
     return None
@@ -223,13 +224,14 @@ async def monitor_job(job_id: int, timeout=120):
             parts = [p.strip() for p in result.stdout.strip().split("|")]
             if len(parts) >= 2:
                 status, progress = parts[0], parts[1]
-                
+                status_norm = status.lower()
+
                 if status != last_status:
                     print(f"   Status: {status} ({progress}%)")
                     last_status = status
-                
-                if status in ["completed", "failed", "cancelled"]:
-                    if status == "completed":
+
+                if status_norm in ["completed", "failed", "cancelled"]:
+                    if status_norm == "completed":
                         print(f"✅ Job completed!")
                         return True
                     else:
@@ -250,9 +252,9 @@ async def verify_output(job_id: int):
     print(f"\n🔍 Verifying output for job #{job_id}")
     
     sql = f"""
-    SELECT m.id, m.filename, m.width, m.height 
-    FROM maps m 
-    JOIN generation_jobs gj ON m.id = gj.map_id 
+    SELECT m.id, m.name, m.theme_id, m.r2_url, jsonb_typeof(m.hierarchy) AS hierarchy_type
+    FROM maps m
+    JOIN generation_jobs gj ON m.id = gj.map_id
     WHERE gj.id = {job_id};
     """
     

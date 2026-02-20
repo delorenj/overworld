@@ -16,6 +16,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_async_session
 from app.core.pubsub import pubsub_manager
 from app.core.queue import QueueConfig, rabbitmq
+from app.models.document import Document
 from app.models.generation_job import GenerationJob, JobStatus
+from app.models.map import Map
+from app.models.theme import Theme
 from app.schemas.generation_job import GenerationRequest
 
 
@@ -44,23 +48,23 @@ class GenerationWorker:
         """Initialize the generation worker."""
         self.processing = False
         self.current_job_id: Optional[int] = None
+        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
 
     def _sync_handle_message(self, channel, method, properties, body) -> None:
-        """Synchronous wrapper for async message handler.
-        
-        Runs the async handler in a new event loop since pika callbacks
-        are synchronous but our handler logic is async.
+        """Synchronous pika callback that dispatches to the main event loop.
+
+        Pika's basic_consume runs callbacks on the consumer thread.
+        asyncpg connections are bound to the event loop that created them,
+        so we MUST dispatch async work back to the main loop rather than
+        creating throwaway loops (which causes InterfaceError).
         """
-        # Create isolated event loop for this message
-        loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(
-                self._handle_message(channel, method, properties, body)
-            )
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
+        future = asyncio.run_coroutine_threadsafe(
+            self._handle_message(channel, method, properties, body),
+            self._main_loop,
+        )
+        # Block the consumer thread until the async handler completes.
+        # This honours prefetch_count=1 back-pressure.
+        future.result()
 
     def _run_consumer(self) -> None:
         """Run the blocking consumer loop (called in thread executor)."""
@@ -72,10 +76,10 @@ class GenerationWorker:
                 on_message_callback=self._sync_handle_message,
                 auto_ack=False,
             )
-            
+
             logger.info("Waiting for messages...")
             channel.start_consuming()
-            
+
         except Exception as e:
             logger.error(f"Consumer error: {e}")
             raise
@@ -85,14 +89,19 @@ class GenerationWorker:
         await rabbitmq.setup_topology()
         logger.info("Generation worker started")
 
-        loop = asyncio.get_event_loop()
+        self._main_loop = asyncio.get_running_loop()
+
+        # Force-initialise the async engine on *this* loop so every
+        # subsequent get_async_session() reuses it correctly.
+        from app.core.database import get_engine
+        get_engine()
 
         while self.processing:
             try:
                 await rabbitmq.connect()
-                
+
                 # Run blocking consumer in thread executor to avoid blocking event loop
-                await loop.run_in_executor(None, self._run_consumer)
+                await self._main_loop.run_in_executor(None, self._run_consumer)
 
             except Exception as e:
                 logger.error(f"Worker error: {e}")
@@ -169,6 +178,9 @@ class GenerationWorker:
                 # For now, simulate progress updates for testing
                 await self._simulate_progress(db, request.job_id)
 
+                # Persist a generated map artifact so e2e flow has tangible output
+                map_id = await self._create_map_artifact(db, request)
+
                 # Calculate total duration
                 end_time = datetime.now(timezone.utc)
                 duration = (end_time - start_time).total_seconds()
@@ -180,17 +192,20 @@ class GenerationWorker:
                     status=JobStatus.COMPLETED,
                     progress=100.0,
                     progress_message="Generation complete",
+                    map_id=map_id,
                 )
 
                 # Broadcast completion event
                 await pubsub_manager.publish_job_completed(
                     job_id=request.job_id,
                     completed_at=end_time,
-                    map_id=None,  # Will be set when actual map is created
+                    map_id=map_id,
                     total_duration_seconds=duration,
                 )
 
-                logger.info(f"Job {request.job_id}: Processing complete in {duration:.2f}s")
+                logger.info(
+                    f"Job {request.job_id}: Processing complete in {duration:.2f}s (map_id={map_id})"
+                )
 
             except Exception as e:
                 # Update to FAILED
@@ -214,6 +229,110 @@ class GenerationWorker:
                     max_retries=request.max_retries,
                 )
                 raise
+
+    async def _create_map_artifact(self, db: AsyncSession, request: GenerationRequest) -> int:
+        """Create a persisted map record for completed jobs.
+
+        This is a lightweight placeholder artifact until the full coordinator
+        pipeline writes richer map payloads.
+        """
+        job_stmt = select(GenerationJob).where(GenerationJob.id == request.job_id)
+        job_result = await db.execute(job_stmt)
+        job = job_result.scalar_one()
+
+        theme = await self._get_or_create_default_theme(db)
+
+        document = None
+        if request.document_id:
+            try:
+                document_uuid = UUID(str(request.document_id))
+                doc_stmt = select(Document).where(Document.id == document_uuid)
+                doc_result = await db.execute(doc_stmt)
+                document = doc_result.scalar_one_or_none()
+            except ValueError:
+                logger.warning(
+                    "Job %s has invalid document_id for artifact creation: %s",
+                    request.job_id,
+                    request.document_id,
+                )
+
+        hierarchy = self._build_placeholder_hierarchy(document)
+        map_name = (
+            f"Generated Map - {document.filename}" if document else f"Generated Map #{request.job_id}"
+        )
+
+        map_record = Map(
+            user_id=request.user_id,
+            theme_id=theme.id,
+            name=map_name,
+            hierarchy=hierarchy,
+            watermarked=True,
+            r2_url=f"generated://maps/job-{request.job_id}.json",
+        )
+
+        db.add(map_record)
+        await db.flush()
+
+        job.map_id = map_record.id
+        await db.commit()
+
+        logger.info("Created map artifact for job %s -> map_id=%s", request.job_id, map_record.id)
+        return map_record.id
+
+    async def _get_or_create_default_theme(self, db: AsyncSession) -> Theme:
+        """Get the default SMB3 theme, creating it if missing."""
+        stmt = select(Theme).where(Theme.name == "smb3")
+        result = await db.execute(stmt)
+        theme = result.scalar_one_or_none()
+
+        if theme:
+            return theme
+
+        theme = Theme(
+            name="smb3",
+            description="Default SMB3-inspired theme",
+            is_premium=False,
+            asset_manifest={
+                "palette": {
+                    "ground": "#7c5a2a",
+                    "grass": "#48a14d",
+                    "water": "#3a7bd5",
+                    "road": "#c8a96a",
+                },
+                "tileset": "smb3",
+                "icons": "default",
+            },
+        )
+        db.add(theme)
+        await db.flush()
+        logger.info("Created default theme 'smb3' (id=%s)", theme.id)
+        return theme
+
+    def _build_placeholder_hierarchy(self, document: Optional[Document]) -> dict:
+        """Build fallback hierarchy payload for generated artifact."""
+        if document and isinstance(document.processed_content, dict):
+            return document.processed_content
+
+        title = document.filename if document else "Generated Overworld"
+        return {
+            "L0": {
+                "id": "root",
+                "title": title,
+                "description": "Auto-generated placeholder hierarchy",
+            },
+            "L1": [
+                {
+                    "id": "milestone-1",
+                    "title": "Initial Milestone",
+                    "content": "Worker-generated artifact",
+                    "parent_id": "root",
+                    "metadata": {"source": "generation_worker"},
+                }
+            ],
+            "L2": [],
+            "L3": [],
+            "L4": [],
+        }
 
     async def _simulate_progress(self, db: AsyncSession, job_id: int) -> None:
         """Simulate progress updates for testing.
@@ -256,6 +375,7 @@ class GenerationWorker:
         progress: float,
         progress_message: Optional[str] = None,
         error_msg: Optional[str] = None,
+        map_id: Optional[int] = None,
     ) -> None:
         """Update job status in database.
 
@@ -275,6 +395,8 @@ class GenerationWorker:
         job.progress_pct = progress
         job.progress_message = progress_message
         job.error_msg = error_msg
+        if map_id is not None:
+            job.map_id = map_id
 
         now = datetime.now(timezone.utc)
 
