@@ -12,7 +12,7 @@ services:
     networks:
       - proxy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U overworld"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-overworld}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -84,9 +84,40 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`) || PathPrefix(`/redoc`) || PathPrefix(`/ws`)"
+      - "traefik.http.routers.backend.rule=Host(`overworld.delo.sh`) && (PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`) || PathPrefix(`/redoc`) || PathPrefix(`/ws`))"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Generation Worker
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: overworld-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-overworld}:${POSTGRES_PASSWORD:-overworld_dev_password}@postgres:5432/${POSTGRES_DB:-overworld}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-overworld_redis_password}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-overworld}:${RABBITMQ_PASSWORD:-overworld_rabbitmq_password}@rabbitmq:5672/
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-overworld}
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+      - backend_cache:/app/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - proxy
+    command: python run_worker.py
 
   # React Frontend
   frontend:
