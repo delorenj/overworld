@@ -45,25 +45,54 @@ class GenerationWorker:
         self.processing = False
         self.current_job_id: Optional[int] = None
 
+    def _sync_handle_message(self, channel, method, properties, body) -> None:
+        """Synchronous wrapper for async message handler.
+        
+        Runs the async handler in a new event loop since pika callbacks
+        are synchronous but our handler logic is async.
+        """
+        # Create isolated event loop for this message
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(
+                self._handle_message(channel, method, properties, body)
+            )
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    def _run_consumer(self) -> None:
+        """Run the blocking consumer loop (called in thread executor)."""
+        try:
+            channel = rabbitmq.channel
+            channel.basic_qos(prefetch_count=1)
+            channel.basic_consume(
+                queue=QueueConfig.QUEUE_PENDING,
+                on_message_callback=self._sync_handle_message,
+                auto_ack=False,
+            )
+            
+            logger.info("Waiting for messages...")
+            channel.start_consuming()
+            
+        except Exception as e:
+            logger.error(f"Consumer error: {e}")
+            raise
+
     async def start(self) -> None:
         """Start the worker and begin consuming jobs."""
         await rabbitmq.setup_topology()
         logger.info("Generation worker started")
 
+        loop = asyncio.get_event_loop()
+
         while self.processing:
             try:
                 await rabbitmq.connect()
-                channel = rabbitmq.channel
-
-                channel.basic_qos(prefetch_count=1)
-                channel.basic_consume(
-                    queue=QueueConfig.QUEUE_PENDING,
-                    on_message_callback=self._handle_message,
-                    auto_ack=False,
-                )
-
-                logger.info("Waiting for messages...")
-                channel.start_consuming()
+                
+                # Run blocking consumer in thread executor to avoid blocking event loop
+                await loop.run_in_executor(None, self._run_consumer)
 
             except Exception as e:
                 logger.error(f"Worker error: {e}")
@@ -78,6 +107,7 @@ class GenerationWorker:
 
     async def _handle_message(self, channel, method, properties, body) -> None:
         """Handle incoming job message."""
+        request = None
         try:
             message_data = json.loads(body.decode())
             request = GenerationRequest(**message_data)
@@ -99,8 +129,11 @@ class GenerationWorker:
             channel.basic_ack(delivery_tag=method.delivery_tag)
 
         except Exception as e:
-            logger.error(f"Job {request.job_id} failed: {e}")
-            await self._handle_failure(request, str(e))
+            if request:
+                logger.error(f"Job {request.job_id} failed: {e}")
+                await self._handle_failure(request, str(e))
+            else:
+                logger.error(f"Failed to parse message: {e}")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
     async def _process_job(self, request: GenerationRequest) -> None:

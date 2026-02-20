@@ -1,8 +1,8 @@
 # FastAPI Framework
 fastapi[all]==0.109.0
 uvicorn[standard]==0.27.0
-pydantic[email]==2.5.3
-pydantic-settings==2.1.0
+pydantic[email]>=2.9.0  # Updated for TheBoard compatibility
+pydantic-settings>=2.5.0  # Updated for TheBoard compatibility
 
 # Database
 sqlalchemy==2.0.25
@@ -41,7 +41,7 @@ pytest-asyncio==0.23.3
 pytest-cov==4.1.0
 
 # Linting & Formatting
-ruff==0.1.13
+ruff>=0.6.0  # Updated for TheBoard compatibility
 
 # Monitoring
 structlog==24.1.0
@@ -49,3 +49,12 @@ structlog==24.1.0
 # Utilities
 python-dotenv==1.0.0
 pypdf==4.0.1  # For PDF parsing in document upload
+
+# Agent Framework (TheBoard integration)
+agno>=0.4.0  # Agent orchestration framework
+anthropic>=0.34.0  # Claude LLM provider for agents
+
+# Local Dependencies (33GOD components)
+# Note: bloodbank is automatically installed as a dependency of theboard
+# DISABLED: local path not available in Docker
+# -e /home/delorenj/code/33GOD/theboard/trunk-main  # Multi-agent consensus system

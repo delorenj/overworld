@@ -2,14 +2,24 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.routers import auth, documents, export, generation, jobs, stripe, tokens, users, websocket
+from app.api.v1.routers import (
+    auth,
+    documents,
+    export,
+    generation,
+    jobs,
+    projects,
+    stripe,
+    tokens,
+    websocket,
+)
 
 api_router = APIRouter()
 
 # Include all v1 routers
 api_router.include_router(auth.router)  # Authentication endpoints
-api_router.include_router(users.router)  # User management endpoints
 api_router.include_router(documents.router)
+api_router.include_router(projects.router)  # Project management and consensus analysis
 api_router.include_router(generation.router)  # Legacy generation endpoints
 api_router.include_router(jobs.router)  # New ARQ-based job queue endpoints
 api_router.include_router(stripe.router)  # Stripe payment integration

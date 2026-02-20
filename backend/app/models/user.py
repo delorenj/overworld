@@ -63,6 +63,12 @@ class User(Base):
     exports: Mapped[list["Export"]] = relationship(
         "Export", back_populates="user", cascade="all, delete-orphan"
     )
+    projects: Mapped[list["Project"]] = relationship(
+        "Project", back_populates="user", cascade="all, delete-orphan"
+    )
+    consensus_analyses: Mapped[list["ConsensusAnalysis"]] = relationship(
+        "ConsensusAnalysis", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email})>"

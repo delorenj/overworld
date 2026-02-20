@@ -1,9 +1,20 @@
 """SQLAlchemy models for Overworld."""
 
+from app.models.consensus import (
+    AnalysisStatus,
+    Checkpoint,
+    CheckpointType,
+    ConsensusAnalysis,
+    EffortSize,
+    Milestone,
+    MilestoneType,
+    Version,
+)
 from app.models.document import Document
 from app.models.export import Export, ExportFormat, ExportStatus
 from app.models.generation_job import GenerationJob, JobStatus
 from app.models.map import Map
+from app.models.project import Project, ProjectDocument, ProjectStatus
 from app.models.theme import Theme
 from app.models.token_balance import TokenBalance
 from app.models.transaction import Transaction, TransactionType
@@ -22,4 +33,15 @@ __all__ = [
     "Export",
     "ExportFormat",
     "ExportStatus",
+    "Project",
+    "ProjectDocument",
+    "ProjectStatus",
+    "ConsensusAnalysis",
+    "Milestone",
+    "Checkpoint",
+    "Version",
+    "AnalysisStatus",
+    "MilestoneType",
+    "EffortSize",
+    "CheckpointType",
 ]

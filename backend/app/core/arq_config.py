@@ -104,25 +104,14 @@ class WorkerSettings:
     # Health check
     health_check_interval = 30  # Seconds
 
-    # Functions registered for this worker (imported at runtime to avoid circular imports)
-    @staticmethod
-    def get_functions():
-        """Get list of worker functions.
-
-        Note: This is called at worker startup to register task functions.
-        """
-        from app.workers.arq_tasks import (
-            process_generation_job,
-            update_job_progress,
-            cleanup_stale_jobs,
-        )
-        return [
-            process_generation_job,
-            update_job_progress,
-            cleanup_stale_jobs,
-        ]
-
-    functions = property(lambda self: WorkerSettings.get_functions())
+    # Functions registered for this worker
+    # Using string paths avoids circular imports at module load time
+    functions = [
+        "app.workers.arq_tasks.process_generation_job",
+        "app.workers.arq_tasks.update_job_progress",
+        "app.workers.arq_tasks.cleanup_stale_jobs",
+        "app.workers.consensus_tasks.process_consensus_analysis",
+    ]
 
     # Cron jobs for maintenance
     cron_jobs = []  # Will add cleanup_stale_jobs as cron if needed

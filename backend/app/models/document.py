@@ -56,3 +56,6 @@ class Document(Base):
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(
         "GenerationJob", back_populates="document", cascade="all, delete-orphan"
     )
+    projects: Mapped[list["ProjectDocument"]] = relationship(
+        "ProjectDocument", back_populates="document", cascade="all, delete-orphan"
+    )

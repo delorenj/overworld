@@ -109,7 +109,7 @@ class GenerationRequest(BaseModel):
     arq_job_id: str = Field(..., description="ARQ job ID for tracking")
     document_id: Optional[str] = Field(None, description="Document ID")
     user_id: int = Field(..., description="User ID")
-    theme_id: str = Field(..., description="Theme ID")
+    theme_id: Optional[str] = Field(None, description="Theme ID (optional)")
     options: dict = Field(default_factory=dict, description="Generation options")
     retry_count: int = Field(0, description="Current retry attempt")
     max_retries: int = Field(3, description="Maximum retry attempts")
