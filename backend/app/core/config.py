@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_ID_CAMPFIRE: str = ""
+    STRIPE_PRICE_ID_GUILD: str = ""
+    STRIPE_PRICE_ID_STUDIO: str = ""
 
     # Anonymous User Rate Limiting
     ANONYMOUS_DAILY_LIMIT: int = 3  # Free map generations per day for anonymous users

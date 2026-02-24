@@ -11,6 +11,36 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, HttpUrl
 
 
+class SubscriptionPlan(BaseModel):
+    """Subscription plan details."""
+
+    id: str
+    name: str
+    price_id: str
+    price_cents: int
+    currency: str = "usd"
+    interval: str = "month"
+    features: list[str]
+
+    class Config:
+        from_attributes = True
+
+
+class SubscriptionPlansResponse(BaseModel):
+    """Response model for list_plans."""
+
+    plans: list[SubscriptionPlan]
+    currency: str = "usd"
+
+
+class SubscriptionCheckoutRequest(BaseModel):
+    """Request model for subscription checkout."""
+
+    plan_id: str
+    success_url: str
+    cancel_url: str
+
+
 class TokenPackage(BaseModel):
     """Token package available for purchase."""
 

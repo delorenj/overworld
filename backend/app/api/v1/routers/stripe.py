@@ -20,6 +20,9 @@ from app.schemas.stripe import (
     CheckoutResponse,
     TokenPackage,
     TokenPackagesResponse,
+    SubscriptionPlan,
+    SubscriptionPlansResponse,
+    SubscriptionCheckoutRequest,
 )
 from app.services.stripe_service import (
     StripeService,
@@ -57,6 +60,80 @@ async def list_packages() -> TokenPackagesResponse:
     """
     packages = StripeService.get_packages()
     return TokenPackagesResponse(packages=packages, currency="usd")
+
+
+@router.get(
+    "/plans",
+    response_model=SubscriptionPlansResponse,
+    summary="List subscription plans",
+    description="Get all available subscription plans",
+)
+async def list_plans() -> SubscriptionPlansResponse:
+    """List all available subscription plans.
+
+    Returns plan details including:
+    - Features
+    - Prices
+    - Intervals
+
+    Returns:
+        SubscriptionPlansResponse
+    """
+    plans = StripeService.get_plans()
+    return SubscriptionPlansResponse(plans=plans, currency="usd")
+
+
+@router.post(
+    "/subscribe",
+    response_model=CheckoutResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create subscription checkout session",
+    description="Create a Stripe checkout session for subscription",
+)
+async def create_subscription_checkout(
+    request: SubscriptionCheckoutRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CheckoutResponse:
+    """Create a Stripe checkout session for subscription.
+
+    Args:
+        request: Checkout request with plan_id and redirect URLs
+        current_user: Authenticated user
+        db: Database session
+
+    Returns:
+        CheckoutResponse with session ID and URL
+
+    Raises:
+        HTTPException(404): If plan_id is invalid
+        HTTPException(500): If checkout session creation fails
+    """
+    stripe_service = get_stripe_service(db)
+
+    try:
+        session_id, checkout_url, expires_at = await stripe_service.create_subscription_session(
+            user_id=current_user.id,
+            plan_id=request.plan_id,
+            success_url=request.success_url,
+            cancel_url=request.cancel_url,
+        )
+
+        return CheckoutResponse(
+            session_id=session_id,
+            checkout_url=checkout_url,
+            expires_at=expires_at,
+        )
+    except InvalidPackageError as e:  # We reuse this exception for invalid plans too
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+    except PaymentProcessingError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
 
 
 @router.get(

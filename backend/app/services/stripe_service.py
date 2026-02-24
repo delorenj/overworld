@@ -16,13 +16,45 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.transaction import TransactionType
-from app.schemas.stripe import TokenPackage, WebhookEvent
+from app.schemas.stripe import TokenPackage, WebhookEvent, SubscriptionPlan
 from app.services.token_service import TokenService
 
 logger = logging.getLogger(__name__)
 
 # Initialize Stripe with API key from settings
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+# Subscription Plans
+SUBSCRIPTION_PLANS: list[SubscriptionPlan] = [
+    SubscriptionPlan(
+        id="campfire",
+        name="Campfire",
+        price_id=settings.STRIPE_PRICE_ID_CAMPFIRE or "price_campfire_placeholder",
+        price_cents=2900,
+        currency="usd",
+        interval="month",
+        features=["No watermarks", "Priority support", "Basic analytics"],
+    ),
+    SubscriptionPlan(
+        id="guild",
+        name="Guild",
+        price_id=settings.STRIPE_PRICE_ID_GUILD or "price_guild_placeholder",
+        price_cents=9900,
+        currency="usd",
+        interval="month",
+        features=["All Campfire features", "Team seats (5)", "Advanced analytics"],
+    ),
+    SubscriptionPlan(
+        id="studio_plus",
+        name="Studio+",
+        price_id=settings.STRIPE_PRICE_ID_STUDIO or "price_studio_plus_placeholder",
+        price_cents=29900,
+        currency="usd",
+        interval="month",
+        features=["All Guild features", "Unlimited seats", "SLA support"],
+    ),
+]
+PLAN_LOOKUP: dict[str, SubscriptionPlan] = {plan.id: plan for plan in SUBSCRIPTION_PLANS}
 
 # Token package definitions
 # Price structure: Base rate is ~$0.50 per 1000 tokens, with volume discounts
@@ -111,6 +143,15 @@ class StripeService:
         return TOKEN_PACKAGES.copy()
 
     @staticmethod
+    def get_plans() -> list[SubscriptionPlan]:
+        """Get all available subscription plans.
+
+        Returns:
+            List of SubscriptionPlan objects
+        """
+        return SUBSCRIPTION_PLANS.copy()
+
+    @staticmethod
     def get_package(package_id: str) -> TokenPackage:
         """Get a specific token package by ID.
 
@@ -130,6 +171,27 @@ class StripeService:
                 f"Valid packages: {', '.join(PACKAGE_LOOKUP.keys())}"
             )
         return package
+
+    @staticmethod
+    def get_plan(plan_id: str) -> SubscriptionPlan:
+        """Get a specific subscription plan by ID.
+
+        Args:
+            plan_id: Plan identifier
+
+        Returns:
+            SubscriptionPlan object
+
+        Raises:
+            InvalidPackageError: If plan ID is not found
+        """
+        plan = PLAN_LOOKUP.get(plan_id)
+        if not plan:
+            raise InvalidPackageError(
+                f"Invalid plan ID: {plan_id}. "
+                f"Valid plans: {', '.join(PLAN_LOOKUP.keys())}"
+            )
+        return plan
 
     async def create_checkout_session(
         self,
@@ -203,6 +265,71 @@ class StripeService:
             logger.error(f"Unexpected error creating checkout session: {e}")
             raise StripeServiceError(f"Failed to create checkout session: {str(e)}")
 
+    async def create_subscription_session(
+        self,
+        user_id: int,
+        plan_id: str,
+        success_url: str,
+        cancel_url: str,
+    ) -> tuple[str, str, int]:
+        """Create a Stripe checkout session for subscription.
+
+        Args:
+            user_id: User ID subscribing
+            plan_id: Subscription plan ID
+            success_url: Success redirect URL
+            cancel_url: Cancel redirect URL
+
+        Returns:
+            Tuple of (session_id, checkout_url, expires_at)
+        """
+        plan = self.get_plan(plan_id)
+
+        logger.info(
+            f"Creating subscription session for user {user_id}, "
+            f"plan {plan_id} (${plan.price_cents/100:.2f})"
+        )
+
+        try:
+            # Create Stripe subscription checkout session
+            session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                line_items=[
+                    {
+                        "price": plan.price_id,
+                        "quantity": 1,
+                    }
+                ],
+                mode="subscription",
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={
+                    "user_id": str(user_id),
+                    "plan_id": plan.id,
+                    "type": "subscription",
+                },
+                subscription_data={
+                    "metadata": {
+                        "user_id": str(user_id),
+                        "plan_id": plan.id,
+                    }
+                },
+                client_reference_id=str(user_id),
+            )
+
+            logger.info(
+                f"Subscription session created: {session.id} for user {user_id}"
+            )
+
+            return session.id, session.url, session.expires_at
+
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe API error creating subscription session: {e}")
+            raise StripeServiceError(f"Failed to create subscription session: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error creating subscription session: {e}")
+            raise StripeServiceError(f"Failed to create subscription session: {str(e)}")
+
     @staticmethod
     def verify_webhook_signature(
         payload: bytes,
@@ -251,8 +378,7 @@ class StripeService:
     ) -> dict:
         """Process a checkout.session.completed webhook event.
 
-        This is the primary webhook for handling successful payments.
-        Tokens are granted to the user's balance.
+        Handles both token purchases and subscription signups.
 
         Args:
             event: Verified Stripe webhook event
@@ -269,19 +395,52 @@ class StripeService:
         # Extract metadata
         user_id = session.get("metadata", {}).get("user_id")
         package_id = session.get("metadata", {}).get("package_id")
+        plan_id = session.get("metadata", {}).get("plan_id")
         payment_status = session.get("payment_status")
+        checkout_type = session.get("metadata", {}).get("type", "token_purchase")
 
         logger.info(
             f"Processing checkout.session.completed: "
-            f"session={session['id']}, user={user_id}, package={package_id}, "
+            f"session={session['id']}, user={user_id}, type={checkout_type}, "
             f"status={payment_status}"
         )
 
         # Validate required fields
-        if not user_id or not package_id:
+        if not user_id:
             raise PaymentProcessingError(
-                f"Missing metadata in session {session['id']}: "
-                f"user_id={user_id}, package_id={package_id}"
+                f"Missing user_id in session {session['id']}"
+            )
+
+        # Handle subscription checkout
+        if checkout_type == "subscription":
+            if payment_status != "paid":
+                logger.warning(
+                    f"Subscription checkout {session['id']} status is '{payment_status}'. "
+                    f"Skipping activation."
+                )
+                return {"success": False, "reason": "Payment not paid"}
+            
+            # Update user is_premium status
+            from app.models.user import User
+            from sqlalchemy import update
+            
+            stmt = update(User).where(User.id == int(user_id)).values(is_premium=True)
+            await self.db.execute(stmt)
+            await self.db.commit()
+            
+            logger.info(f"Activated premium status for user {user_id} (Plan: {plan_id})")
+            return {
+                "success": True, 
+                "user_id": user_id, 
+                "type": "subscription", 
+                "plan": plan_id,
+                "activated": True
+            }
+
+        # Handle token purchase (existing logic)
+        if not package_id:
+            raise PaymentProcessingError(
+                f"Missing package_id in session {session['id']}"
             )
 
         # Verify payment status
@@ -352,6 +511,51 @@ class StripeService:
                 f"Failed to grant tokens: {str(e)}"
             )
 
+    async def process_subscription_event(
+        self,
+        event: stripe.Event,
+    ) -> dict:
+        """Process customer.subscription.* webhook events."""
+        subscription = event["data"]["object"]
+        event_type = event["type"]
+        event_id = event["id"]
+        
+        user_id = subscription.get("metadata", {}).get("user_id")
+        plan_id = subscription.get("metadata", {}).get("plan_id")
+        status = subscription.get("status")
+
+        logger.info(
+            f"Processing subscription event: {event_type}, user={user_id}, "
+            f"plan={plan_id}, status={status}"
+        )
+
+        if not user_id:
+            logger.warning(f"Subscription event {event_id} missing user_id metadata")
+            return {"success": False, "reason": "Missing user_id"}
+
+        # Logic to update user premium status based on subscription status
+        # active, trialing => premium
+        # past_due, unpaid, canceled, incomplete, incomplete_expired => not premium
+        
+        is_premium = status in ["active", "trialing"]
+        
+        from app.models.user import User
+        from sqlalchemy import update
+        
+        stmt = update(User).where(User.id == int(user_id)).values(is_premium=is_premium)
+        await self.db.execute(stmt)
+        await self.db.commit()
+        
+        logger.info(f"Updated user {user_id} premium status to {is_premium} (status={status})")
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "event": event_type,
+            "status": status,
+            "is_premium": is_premium
+        }
+
     async def process_payment_intent_succeeded(
         self,
         event: stripe.Event,
@@ -407,6 +611,8 @@ class StripeService:
         # Route to appropriate handler
         if event_type == "checkout.session.completed":
             return await self.process_checkout_completed(event)
+        elif event_type.startswith("customer.subscription."):
+            return await self.process_subscription_event(event)
         elif event_type == "payment_intent.succeeded":
             return await self.process_payment_intent_succeeded(event)
         elif event_type == "payment_intent.payment_failed":
