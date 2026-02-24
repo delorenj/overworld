@@ -65,19 +65,19 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test creating an export successfully."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
-        # Mock token service to return premium user
-        with patch("app.services.export_service.TokenService") as mock_token_service:
-            mock_token_service.return_value.get_balance = AsyncMock(return_value=100)
+        # Set user as premium (Stripe subscription active)
+        test_user.is_premium = True
+        await db_session.commit()
 
-            export = await service.create_export(
-                map_id=test_map.id,
-                user_id=test_user.id,
-                format=ExportFormat.PNG,
-                resolution=2,
-                include_watermark=False,
-            )
+        export = await service.create_export(
+            map_id=test_map.id,
+            user_id=test_user.id,
+            format=ExportFormat.PNG,
+            resolution=2,
+            include_watermark=False,
+        )
 
         assert export.id is not None
         assert export.map_id == test_map.id
@@ -97,19 +97,19 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test that free users always get watermark."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
-        # Mock token service to return free user
-        with patch("app.services.export_service.TokenService") as mock_token_service:
-            mock_token_service.return_value.get_balance = AsyncMock(return_value=0)
+        # Ensure user is free tier (no Stripe subscription)
+        test_user.is_premium = False
+        await db_session.commit()
 
-            export = await service.create_export(
-                map_id=test_map.id,
-                user_id=test_user.id,
-                format=ExportFormat.SVG,
-                resolution=1,
-                include_watermark=False,  # User requested no watermark
-            )
+        export = await service.create_export(
+            map_id=test_map.id,
+            user_id=test_user.id,
+            format=ExportFormat.SVG,
+            resolution=1,
+            include_watermark=False,  # User requested no watermark
+        )
 
         assert export.watermarked is True  # Forced for free users
 
@@ -121,7 +121,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test creating export for non-existent map."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         with pytest.raises(ValueError, match="not found or access denied"):
             await service.create_export(
@@ -144,7 +144,7 @@ class TestExportService:
         await db_session.commit()
         await db_session.refresh(other_user)
 
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         with pytest.raises(ValueError, match="not found or access denied"):
             await service.create_export(
@@ -162,7 +162,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test processing PNG export."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create export
         export = Export(
@@ -199,7 +199,7 @@ class TestExportService:
         mock_r2_service.upload_file = AsyncMock(
             return_value=("exports/123/test.svg", "https://example.com/test.svg")
         )
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create export
         export = Export(
@@ -230,7 +230,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test export processing failure."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create export
         export = Export(
@@ -265,7 +265,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test getting download URL for completed export."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create completed export
         export = Export(
@@ -297,7 +297,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test getting download URL for expired export."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create expired export
         export = Export(
@@ -327,7 +327,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test listing user exports."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create multiple exports
         for i in range(3):
@@ -357,7 +357,7 @@ class TestExportService:
         mock_r2_service,
     ):
         """Test export listing pagination."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
         # Create 5 exports
         for i in range(5):
@@ -423,18 +423,19 @@ class TestWatermarkLogic:
         mock_r2_service,
     ):
         """Test watermark is applied for free users."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
-        with patch("app.services.export_service.TokenService") as mock_token_service:
-            mock_token_service.return_value.get_balance = AsyncMock(return_value=0)
+        # Ensure user is free tier (no Stripe subscription)
+        test_user.is_premium = False
+        await db_session.commit()
 
-            export = await service.create_export(
-                map_id=test_map.id,
-                user_id=test_user.id,
-                format=ExportFormat.PNG,
-                resolution=1,
-                include_watermark=False,  # Requested no watermark
-            )
+        export = await service.create_export(
+            map_id=test_map.id,
+            user_id=test_user.id,
+            format=ExportFormat.PNG,
+            resolution=1,
+            include_watermark=False,  # Requested no watermark
+        )
 
         assert export.watermarked is True
 
@@ -447,18 +448,19 @@ class TestWatermarkLogic:
         mock_r2_service,
     ):
         """Test no watermark for premium users."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
-        with patch("app.services.export_service.TokenService") as mock_token_service:
-            mock_token_service.return_value.get_balance = AsyncMock(return_value=100)
+        # Set user as premium (Stripe subscription active)
+        test_user.is_premium = True
+        await db_session.commit()
 
-            export = await service.create_export(
-                map_id=test_map.id,
-                user_id=test_user.id,
-                format=ExportFormat.PNG,
-                resolution=1,
-                include_watermark=False,
-            )
+        export = await service.create_export(
+            map_id=test_map.id,
+            user_id=test_user.id,
+            format=ExportFormat.PNG,
+            resolution=1,
+            include_watermark=False,
+        )
 
         assert export.watermarked is False
 
@@ -471,17 +473,18 @@ class TestWatermarkLogic:
         mock_r2_service,
     ):
         """Test premium users can optionally include watermark."""
-        service = ExportService(db_session, mock_r2_service)
+        service = ExportService(db_session)
 
-        with patch("app.services.export_service.TokenService") as mock_token_service:
-            mock_token_service.return_value.get_balance = AsyncMock(return_value=100)
+        # Set user as premium (Stripe subscription active)
+        test_user.is_premium = True
+        await db_session.commit()
 
-            export = await service.create_export(
-                map_id=test_map.id,
-                user_id=test_user.id,
-                format=ExportFormat.PNG,
-                resolution=1,
-                include_watermark=True,  # Premium user wants watermark
-            )
+        export = await service.create_export(
+            map_id=test_map.id,
+            user_id=test_user.id,
+            format=ExportFormat.PNG,
+            resolution=1,
+            include_watermark=True,  # Premium user wants watermark
+        )
 
         assert export.watermarked is True

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.export import Export, ExportFormat, ExportStatus
 from app.models.map import Map
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -362,11 +363,15 @@ class ExportService:
         if not map_obj:
             raise ValueError(f"Map {map_id} not found or access denied")
 
-        # Free users always get watermark
-        from app.services.token_service import TokenService
-        token_service = TokenService(self.db)
-        balance = await token_service.get_balance(user_id)
-        is_premium = balance > 0
+        # Fetch user to check Stripe subscription status
+        user_stmt = select(User).where(User.id == user_id)
+        user_result = await self.db.execute(user_stmt)
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+
+        # Free users always get watermark; paid tier (Stripe subscription) can disable
+        is_premium = user.is_premium
         watermarked = include_watermark if is_premium else True
 
         expires_at = datetime.now(timezone.utc) + timedelta(hours=EXPORT_EXPIRY_HOURS)
