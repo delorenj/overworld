@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency management

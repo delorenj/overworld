@@ -1,9 +1,11 @@
 """Export router for map export endpoints."""
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -351,3 +353,18 @@ async def list_user_exports(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/exports/file/{filename}",
+    summary="Download locally-stored export file",
+    description="Serve export files saved to /app/exports/ (dev mode fallback).",
+)
+async def download_local_export(filename: str) -> FileResponse:
+    """Serve a local export file (dev mode when R2 is not configured)."""
+    safe_name = Path(filename).name  # strip any path traversal
+    file_path = Path("/app/exports") / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Export file not found")
+    media_type = "image/png" if safe_name.endswith(".png") else "image/svg+xml"
+    return FileResponse(path=str(file_path), media_type=media_type, filename=safe_name)

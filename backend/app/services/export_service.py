@@ -2,9 +2,12 @@
 
 import asyncio
 import logging
+import math
+import os
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy import select
@@ -13,36 +16,337 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.export import Export, ExportFormat, ExportStatus
 from app.models.map import Map
-from app.services.r2_storage import R2StorageService, get_r2_service
-from app.services.token_service import TokenService
 
 logger = logging.getLogger(__name__)
 
 # Export configuration
 EXPORT_EXPIRY_HOURS = 24
-BASE_MAP_WIDTH = 1024  # Base width for 1x resolution
-BASE_MAP_HEIGHT = 768  # Base height for 1x resolution
-WATERMARK_TEXT = "Overworld"
-WATERMARK_OPACITY = 128  # 0-255, 128 is 50% transparent
+BASE_MAP_WIDTH = 1024
+BASE_MAP_HEIGHT = 768
+WATERMARK_TEXT = "OVERWORLD"
+WATERMARK_OPACITY = 90
+
+# Local export directory for dev mode (no R2)
+LOCAL_EXPORT_DIR = Path("/app/exports")
+
+# ── Theme palette ──────────────────────────────────────────────────
+REGION_COLORS = [
+    (72, 161, 77),   # grass green
+    (58, 123, 213),  # water blue
+    (200, 169, 106), # sand
+    (168, 112, 58),  # earth brown
+    (140, 100, 180), # mountain purple
+    (210, 140, 60),  # sunset orange
+]
+BG_COLOR = (248, 244, 236)
+ROAD_COLOR = (180, 160, 130)
+NODE_RADIUS = 18
+NODE_OUTLINE = (60, 50, 40)
+TEXT_COLOR = (50, 45, 40)
+SUBTITLE_COLOR = (100, 90, 80)
+
+
+def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Get a DejaVu font at the requested size, falling back gracefully."""
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
 
 
 class ExportError(Exception):
-    """Raised when export generation fails."""
     pass
 
+
+# ── Hierarchy helpers ──────────────────────────────────────────────
+
+def _parse_hierarchy(raw: Any) -> dict:
+    """Normalise hierarchy JSON into {title, regions: [{name, milestones}]}."""
+    if not isinstance(raw, dict):
+        return {"title": "Untitled Map", "regions": []}
+
+    title = "Untitled Map"
+    l0 = raw.get("L0")
+    if isinstance(l0, dict):
+        title = l0.get("title", title)
+    elif isinstance(l0, str):
+        title = l0
+
+    # L2 entries are regions
+    regions_raw = raw.get("L2", [])
+    if not isinstance(regions_raw, list):
+        regions_raw = []
+
+    milestones_raw = raw.get("L3", [])
+    if not isinstance(milestones_raw, list):
+        milestones_raw = []
+
+    # Index milestones by parent
+    ms_by_parent: dict[str, list[str]] = {}
+    for m in milestones_raw:
+        if isinstance(m, dict):
+            pid = m.get("parent_id", "")
+            ms_by_parent.setdefault(pid, []).append(
+                m.get("title", m.get("content", "?"))
+            )
+
+    regions = []
+    for r in regions_raw:
+        if isinstance(r, dict):
+            rid = r.get("id", "")
+            regions.append({
+                "name": r.get("title", r.get("content", "Region")),
+                "milestones": ms_by_parent.get(rid, []),
+            })
+
+    # Fallback: if no L2 but L1 exists, treat L1 children as regions
+    if not regions:
+        l1 = raw.get("L1", [])
+        if isinstance(l1, list):
+            for item in l1:
+                if isinstance(item, dict):
+                    regions.append({
+                        "name": item.get("title", item.get("content", "Region")),
+                        "milestones": [],
+                    })
+
+    return {"title": title, "regions": regions}
+
+
+# ── PNG rendering ──────────────────────────────────────────────────
+
+def _render_png(
+    hierarchy: dict,
+    map_name: str,
+    width: int,
+    height: int,
+    watermarked: bool,
+) -> bytes:
+    """Render a hierarchy-based map as PNG."""
+    img = Image.new("RGB", (width, height), color=BG_COLOR)
+    draw = ImageDraw.Draw(img, mode="RGBA")
+
+    parsed = _parse_hierarchy(hierarchy)
+    title = parsed["title"] or map_name
+    regions = parsed["regions"] or [{"name": "Empty Map", "milestones": []}]
+
+    # ── Title ──
+    title_font = _get_font(max(22, width // 28), bold=True)
+    bbox = draw.textbbox((0, 0), title, font=title_font)
+    tw = bbox[2] - bbox[0]
+    draw.text(((width - tw) // 2, 30), title, fill=TEXT_COLOR, font=title_font)
+
+    # ── Layout regions in a grid ──
+    n = len(regions)
+    cols = min(n, max(1, round(math.sqrt(n * (width / height)))))
+    rows = math.ceil(n / cols)
+    pad = width // 24
+    region_w = (width - (cols + 1) * pad) // cols
+    region_h = (height - 100 - (rows + 1) * pad) // rows
+
+    label_font = _get_font(max(14, width // 50), bold=True)
+    ms_font = _get_font(max(11, width // 65))
+
+    node_positions: list[tuple[int, int]] = []
+
+    for idx, region in enumerate(regions):
+        col = idx % cols
+        row = idx // cols
+        rx = pad + col * (region_w + pad)
+        ry = 90 + pad + row * (region_h + pad)
+        color = REGION_COLORS[idx % len(REGION_COLORS)]
+
+        # Filled rounded rect
+        draw.rounded_rectangle(
+            [rx, ry, rx + region_w, ry + region_h],
+            radius=12,
+            fill=(*color, 60),
+            outline=(*color, 180),
+            width=2,
+        )
+
+        # Region label
+        draw.text((rx + 12, ry + 8), region["name"], fill=TEXT_COLOR, font=label_font)
+
+        # Milestones as nodes
+        milestones = region["milestones"][:8]  # cap for visual clarity
+        ms_start_y = ry + 36
+        for mi, ms in enumerate(milestones):
+            mx = rx + 30
+            my = ms_start_y + mi * (NODE_RADIUS * 2 + 8)
+            if my + NODE_RADIUS > ry + region_h - 8:
+                break
+            # node circle
+            draw.ellipse(
+                [mx - NODE_RADIUS, my - NODE_RADIUS, mx + NODE_RADIUS, my + NODE_RADIUS],
+                fill=(*color, 200),
+                outline=NODE_OUTLINE,
+                width=2,
+            )
+            # label
+            draw.text((mx + NODE_RADIUS + 8, my - 8), ms[:32], fill=TEXT_COLOR, font=ms_font)
+            node_positions.append((mx, my))
+
+    # ── Roads between sequential nodes ──
+    for i in range(len(node_positions) - 1):
+        ax, ay = node_positions[i]
+        bx, by = node_positions[i + 1]
+        draw.line([(ax, ay), (bx, by)], fill=(*ROAD_COLOR, 120), width=3)
+
+    # ── Watermark ──
+    if watermarked:
+        _apply_watermark_png(draw, width, height)
+
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _apply_watermark_png(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
+    """Draw diagonal repeating watermark."""
+    wm_font = _get_font(max(28, w // 20), bold=True)
+    step_x = w // 3
+    step_y = h // 3
+    for iy in range(-1, 4):
+        for ix in range(-1, 4):
+            x = ix * step_x + (iy % 2) * (step_x // 2)
+            y = iy * step_y
+            draw.text(
+                (x, y),
+                WATERMARK_TEXT,
+                fill=(0, 0, 0, WATERMARK_OPACITY),
+                font=wm_font,
+            )
+
+
+# ── SVG rendering ──────────────────────────────────────────────────
+
+def _render_svg(
+    hierarchy: dict,
+    map_name: str,
+    width: int,
+    height: int,
+    watermarked: bool,
+) -> bytes:
+    """Render a hierarchy-based map as SVG."""
+    parsed = _parse_hierarchy(hierarchy)
+    title = parsed["title"] or map_name
+    regions = parsed["regions"] or [{"name": "Empty Map", "milestones": []}]
+
+    parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">',
+        f'<rect width="{width}" height="{height}" fill="rgb{BG_COLOR}"/>',
+    ]
+
+    # Title
+    ts = max(22, width // 28)
+    parts.append(
+        f'<text x="{width // 2}" y="50" text-anchor="middle" '
+        f'font-family="DejaVu Sans,sans-serif" font-size="{ts}" '
+        f'font-weight="bold" fill="rgb{TEXT_COLOR}">{_svg_esc(title)}</text>'
+    )
+
+    n = len(regions)
+    cols = min(n, max(1, round(math.sqrt(n * (width / height)))))
+    rows = math.ceil(n / cols)
+    pad = width // 24
+    rw = (width - (cols + 1) * pad) // cols
+    rh = (height - 100 - (rows + 1) * pad) // rows
+    ls = max(14, width // 50)
+    ms_s = max(11, width // 65)
+
+    nodes: list[tuple[int, int]] = []
+
+    for idx, region in enumerate(regions):
+        col = idx % cols
+        row = idx // cols
+        rx = pad + col * (rw + pad)
+        ry = 90 + pad + row * (rh + pad)
+        c = REGION_COLORS[idx % len(REGION_COLORS)]
+
+        parts.append(
+            f'<rect x="{rx}" y="{ry}" width="{rw}" height="{rh}" rx="12" '
+            f'fill="rgba({c[0]},{c[1]},{c[2]},0.25)" '
+            f'stroke="rgba({c[0]},{c[1]},{c[2]},0.7)" stroke-width="2"/>'
+        )
+        parts.append(
+            f'<text x="{rx + 12}" y="{ry + 24}" font-family="DejaVu Sans,sans-serif" '
+            f'font-size="{ls}" font-weight="bold" fill="rgb{TEXT_COLOR}">'
+            f'{_svg_esc(region["name"])}</text>'
+        )
+
+        milestones = region["milestones"][:8]
+        ms_start = ry + 46
+        for mi, ms in enumerate(milestones):
+            mx = rx + 30
+            my = ms_start + mi * (NODE_RADIUS * 2 + 8)
+            if my + NODE_RADIUS > ry + rh - 8:
+                break
+            parts.append(
+                f'<circle cx="{mx}" cy="{my}" r="{NODE_RADIUS}" '
+                f'fill="rgba({c[0]},{c[1]},{c[2]},0.8)" '
+                f'stroke="rgb{NODE_OUTLINE}" stroke-width="2"/>'
+            )
+            parts.append(
+                f'<text x="{mx + NODE_RADIUS + 8}" y="{my + 4}" '
+                f'font-family="DejaVu Sans,sans-serif" font-size="{ms_s}" '
+                f'fill="rgb{TEXT_COLOR}">{_svg_esc(ms[:32])}</text>'
+            )
+            nodes.append((mx, my))
+
+    # Roads
+    for i in range(len(nodes) - 1):
+        ax, ay = nodes[i]
+        bx, by = nodes[i + 1]
+        parts.append(
+            f'<line x1="{ax}" y1="{ay}" x2="{bx}" y2="{by}" '
+            f'stroke="rgba({ROAD_COLOR[0]},{ROAD_COLOR[1]},{ROAD_COLOR[2]},0.5)" '
+            f'stroke-width="3"/>'
+        )
+
+    # Watermark
+    if watermarked:
+        parts.append(_svg_watermark(width, height))
+
+    parts.append("</svg>")
+    return "\n".join(parts).encode("utf-8")
+
+
+def _svg_esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _svg_watermark(w: int, h: int) -> str:
+    fs = max(28, w // 20)
+    lines = []
+    step_x = w // 3
+    step_y = h // 3
+    for iy in range(-1, 4):
+        for ix in range(-1, 4):
+            x = ix * step_x + (iy % 2) * (step_x // 2)
+            y = iy * step_y
+            lines.append(
+                f'<text x="{x}" y="{y}" font-family="DejaVu Sans,sans-serif" '
+                f'font-size="{fs}" font-weight="bold" fill="#000" '
+                f'opacity="0.08">{WATERMARK_TEXT}</text>'
+            )
+    return "\n".join(lines)
+
+
+# ── Service ────────────────────────────────────────────────────────
 
 class ExportService:
     """Service for generating and managing map exports."""
 
-    def __init__(self, db: AsyncSession, r2_service: Optional[R2StorageService] = None):
-        """Initialize the export service.
-
-        Args:
-            db: Database session
-            r2_service: Optional R2 storage service (auto-created if not provided)
-        """
+    def __init__(self, db: AsyncSession):
         self.db = db
-        self.r2_service = r2_service or get_r2_service()
 
     async def create_export(
         self,
@@ -52,41 +356,21 @@ class ExportService:
         resolution: int = 1,
         include_watermark: bool = True,
     ) -> Export:
-        """Create a new export request.
-
-        Args:
-            map_id: ID of the map to export
-            user_id: ID of the user requesting the export
-            format: Export format (PNG or SVG)
-            resolution: Resolution multiplier (1, 2, or 4)
-            include_watermark: Whether to include watermark
-
-        Returns:
-            Created Export instance
-
-        Raises:
-            ValueError: If map not found or user doesn't own map
-        """
-        # Verify map exists and user owns it
         stmt = select(Map).where(Map.id == map_id, Map.user_id == user_id)
         result = await self.db.execute(stmt)
         map_obj = result.scalar_one_or_none()
-
         if not map_obj:
             raise ValueError(f"Map {map_id} not found or access denied")
 
-        # Check if user is premium (has tokens > 0)
+        # Free users always get watermark
+        from app.services.token_service import TokenService
         token_service = TokenService(self.db)
         balance = await token_service.get_balance(user_id)
         is_premium = balance > 0
-
-        # Free users must have watermark
         watermarked = include_watermark if is_premium else True
 
-        # Calculate expiration time
         expires_at = datetime.now(timezone.utc) + timedelta(hours=EXPORT_EXPIRY_HOURS)
 
-        # Create export record
         export = Export(
             map_id=map_id,
             user_id=user_id,
@@ -96,143 +380,123 @@ class ExportService:
             watermarked=watermarked,
             expires_at=expires_at,
         )
-
         self.db.add(export)
         await self.db.commit()
         await self.db.refresh(export)
-
         logger.info(
-            f"Created export {export.id} for map {map_id} "
-            f"(format={format}, resolution={resolution}x, watermarked={watermarked})"
+            "Created export %s for map %s (format=%s res=%sx wm=%s)",
+            export.id, map_id, format, resolution, watermarked,
         )
-
         return export
 
     async def process_export(self, export_id: int) -> Export:
-        """Process an export (generate file and upload to R2).
-
-        This should be called in a background task.
-
-        Args:
-            export_id: ID of the export to process
-
-        Returns:
-            Updated Export instance
-
-        Raises:
-            ExportError: If export processing fails
-        """
-        # Get export with map data
-        stmt = (
-            select(Export)
-            .where(Export.id == export_id)
-            .join(Export.map)
-        )
+        stmt = select(Export).where(Export.id == export_id)
         result = await self.db.execute(stmt)
         export = result.scalar_one_or_none()
-
         if not export:
             raise ExportError(f"Export {export_id} not found")
 
+        # Eagerly load the map
+        map_stmt = select(Map).where(Map.id == export.map_id)
+        map_result = await self.db.execute(map_stmt)
+        map_obj = map_result.scalar_one_or_none()
+        if not map_obj:
+            raise ExportError(f"Map {export.map_id} not found for export {export_id}")
+
         try:
-            # Update status to processing
             export.status = ExportStatus.PROCESSING
             await self.db.commit()
 
-            # Generate the export file
+            width = BASE_MAP_WIDTH * export.resolution
+            height = BASE_MAP_HEIGHT * export.resolution
+            hierarchy = map_obj.hierarchy or {}
+
             if export.format == ExportFormat.PNG:
-                file_content = await self._generate_png(
-                    export.map,
-                    export.resolution,
-                    export.watermarked,
+                file_content = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    _render_png,
+                    hierarchy, map_obj.name, width, height, export.watermarked,
                 )
-                mime_type = "image/png"
                 file_ext = "png"
-            else:  # SVG
-                file_content = await self._generate_svg(
-                    export.map,
-                    export.resolution,
-                    export.watermarked,
+            else:
+                file_content = _render_svg(
+                    hierarchy, map_obj.name, width, height, export.watermarked,
                 )
-                mime_type = "image/svg+xml"
                 file_ext = "svg"
 
-            # Upload to R2
             filename = f"map_{export.map_id}_export_{export.id}.{file_ext}"
-            r2_path, _ = await self.r2_service.upload_file(
-                file_content=file_content,
-                filename=filename,
-                user_id=export.user_id,
-                mime_type=mime_type,
-            )
 
-            # Update export record
+            # Try R2 upload; fall back to local for dev
+            file_path = await self._store_file(file_content, filename, export.user_id, file_ext)
+
             export.status = ExportStatus.COMPLETED
-            export.file_path = r2_path
+            export.file_path = file_path
             export.file_size = len(file_content)
             export.completed_at = datetime.now(timezone.utc)
-
             await self.db.commit()
             await self.db.refresh(export)
-
-            logger.info(
-                f"Export {export_id} completed successfully "
-                f"({export.file_size} bytes)"
-            )
-
+            logger.info("Export %s completed (%d bytes) -> %s", export_id, len(file_content), file_path)
             return export
 
         except Exception as e:
-            # Update status to failed
             export.status = ExportStatus.FAILED
-            export.error_message = str(e)[:1024]  # Truncate to column size
+            export.error_message = str(e)[:1024]
             await self.db.commit()
-
-            logger.error(f"Export {export_id} failed: {e}", exc_info=True)
+            logger.error("Export %s failed: %s", export_id, e, exc_info=True)
             raise ExportError(f"Export generation failed: {e}") from e
 
+    async def _store_file(
+        self,
+        content: bytes,
+        filename: str,
+        user_id: int,
+        ext: str,
+    ) -> str:
+        """Upload to R2 if configured, otherwise save locally."""
+        try:
+            from app.services.r2_storage import get_r2_service
+            r2 = get_r2_service()
+            mime = "image/png" if ext == "png" else "image/svg+xml"
+            r2_path, _ = await r2.upload_file(
+                file_content=content,
+                filename=filename,
+                user_id=user_id,
+                mime_type=mime,
+            )
+            return r2_path
+        except Exception as e:
+            logger.warning("R2 upload failed, saving locally: %s", e)
+            LOCAL_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+            local_path = LOCAL_EXPORT_DIR / filename
+            local_path.write_bytes(content)
+            return str(local_path)
+
     async def get_export(self, export_id: int, user_id: int) -> Optional[Export]:
-        """Get an export by ID (with access control).
-
-        Args:
-            export_id: Export ID
-            user_id: User ID for access control
-
-        Returns:
-            Export instance or None if not found
-        """
-        stmt = select(Export).where(
-            Export.id == export_id,
-            Export.user_id == user_id,
-        )
+        stmt = select(Export).where(Export.id == export_id, Export.user_id == user_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_download_url(self, export: Export) -> Optional[str]:
-        """Generate a pre-signed download URL for an export.
-
-        Args:
-            export: Export instance
-
-        Returns:
-            Pre-signed download URL or None if export not completed
-        """
         if export.status != ExportStatus.COMPLETED or not export.file_path:
             return None
-
-        # Check if export has expired
         if export.expires_at and export.expires_at < datetime.now(timezone.utc):
             return None
 
-        # Generate pre-signed URL (1 hour expiry)
-        bucket_name = settings.R2_BUCKET_EXPORTS
-        url = await self.r2_service.generate_presigned_url(
-            bucket_name=bucket_name,
-            r2_path=export.file_path,
-            expiry_seconds=3600,  # 1 hour
-        )
+        # Local file — return direct path
+        if export.file_path.startswith("/app/exports/"):
+            return f"/api/v1/maps/exports/file/{os.path.basename(export.file_path)}"
 
-        return url
+        # R2 — presigned URL
+        try:
+            from app.services.r2_storage import get_r2_service
+            r2 = get_r2_service()
+            return await r2.generate_presigned_url(
+                bucket_name=settings.R2_BUCKET_EXPORTS,
+                r2_path=export.file_path,
+                expiry_seconds=3600,
+            )
+        except Exception:
+            return None
 
     async def list_user_exports(
         self,
@@ -241,307 +505,16 @@ class ExportService:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[Export], int]:
-        """List exports for a user.
-
-        Args:
-            user_id: User ID
-            map_id: Optional map ID to filter by
-            limit: Maximum number of exports to return
-            offset: Offset for pagination
-
-        Returns:
-            Tuple of (list of exports, total count)
-        """
-        # Build query
+        from sqlalchemy import func
         stmt = select(Export).where(Export.user_id == user_id)
-
         if map_id:
             stmt = stmt.where(Export.map_id == map_id)
-
-        # Get total count
-        from sqlalchemy import func
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = await self.db.scalar(count_stmt) or 0
-
-        # Get paginated results
         stmt = stmt.order_by(Export.created_at.desc()).offset(offset).limit(limit)
         result = await self.db.execute(stmt)
-        exports = list(result.scalars().all())
-
-        return exports, total
-
-    async def _generate_png(
-        self,
-        map_obj: Map,
-        resolution: int,
-        watermarked: bool,
-    ) -> bytes:
-        """Generate PNG export from map data.
-
-        Args:
-            map_obj: Map instance with hierarchy data
-            resolution: Resolution multiplier (1, 2, or 4)
-            watermarked: Whether to apply watermark
-
-        Returns:
-            PNG file content as bytes
-        """
-        # Calculate dimensions
-        width = BASE_MAP_WIDTH * resolution
-        height = BASE_MAP_HEIGHT * resolution
-
-        # Create image in executor (PIL is CPU-bound)
-        def create_image():
-            # Create base image with background
-            img = Image.new("RGB", (width, height), color=(240, 240, 240))
-            draw = ImageDraw.Draw(img, mode="RGBA")
-
-            # Draw simple placeholder content
-            # In production, this would render the actual map hierarchy
-            self._draw_placeholder_map(draw, width, height, map_obj)
-
-            # Apply watermark if needed
-            if watermarked:
-                self._apply_watermark(img, draw, width, height)
-
-            # Convert to bytes
-            buffer = BytesIO()
-            img.save(buffer, format="PNG", optimize=True)
-            return buffer.getvalue()
-
-        # Run in executor to avoid blocking
-        return await asyncio.get_event_loop().run_in_executor(None, create_image)
-
-    async def _generate_svg(
-        self,
-        map_obj: Map,
-        resolution: int,
-        watermarked: bool,
-    ) -> bytes:
-        """Generate SVG export from map data.
-
-        Args:
-            map_obj: Map instance with hierarchy data
-            resolution: Resolution multiplier (1, 2, or 4)
-            watermarked: Whether to apply watermark
-
-        Returns:
-            SVG file content as bytes
-        """
-        # Calculate dimensions
-        width = BASE_MAP_WIDTH * resolution
-        height = BASE_MAP_HEIGHT * resolution
-
-        # Build SVG content
-        svg_parts = [
-            f'<?xml version="1.0" encoding="UTF-8"?>',
-            f'<svg xmlns="http://www.w3.org/2000/svg" ',
-            f'width="{width}" height="{height}" ',
-            f'viewBox="0 0 {width} {height}">',
-            f'<rect width="{width}" height="{height}" fill="#f0f0f0"/>',
-        ]
-
-        # Add placeholder content
-        # In production, this would render the actual map hierarchy
-        svg_parts.extend(self._get_placeholder_svg_elements(width, height, map_obj))
-
-        # Add watermark if needed
-        if watermarked:
-            svg_parts.append(self._get_watermark_svg(width, height))
-
-        svg_parts.append("</svg>")
-
-        return "\n".join(svg_parts).encode("utf-8")
-
-    def _draw_placeholder_map(
-        self,
-        draw: ImageDraw.ImageDraw,
-        width: int,
-        height: int,
-        map_obj: Map,
-    ) -> None:
-        """Draw placeholder map content (replace with actual map rendering).
-
-        Args:
-            draw: PIL ImageDraw instance
-            width: Image width
-            height: Image height
-            map_obj: Map instance
-        """
-        # Draw title
-        title = map_obj.name
-        title_font_size = max(20, width // 30)
-
-        try:
-            # Try to use a nice font
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", title_font_size)
-        except Exception:
-            # Fall back to default font
-            font = ImageFont.load_default()
-
-        # Draw title centered at top
-        bbox = draw.textbbox((0, 0), title, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_x = (width - text_width) // 2
-        draw.text((text_x, 40), title, fill=(50, 50, 50), font=font)
-
-        # Draw placeholder regions
-        padding = width // 20
-        region_width = (width - 3 * padding) // 2
-        region_height = (height - 3 * padding) // 2
-
-        colors = [
-            (200, 220, 240),  # Light blue
-            (220, 240, 200),  # Light green
-            (240, 220, 200),  # Light orange
-            (240, 200, 220),  # Light pink
-        ]
-
-        for i in range(4):
-            row = i // 2
-            col = i % 2
-            x = padding + col * (region_width + padding)
-            y = 100 + padding + row * (region_height + padding)
-
-            # Draw rectangle
-            draw.rectangle(
-                [x, y, x + region_width, y + region_height],
-                fill=colors[i],
-                outline=(100, 100, 100),
-                width=2,
-            )
-
-            # Draw label
-            label = f"Region {i + 1}"
-            label_bbox = draw.textbbox((0, 0), label, font=font)
-            label_width = label_bbox[2] - label_bbox[0]
-            label_x = x + (region_width - label_width) // 2
-            label_y = y + region_height // 2
-            draw.text((label_x, label_y), label, fill=(50, 50, 50), font=font)
-
-    def _apply_watermark(
-        self,
-        img: Image.Image,
-        draw: ImageDraw.ImageDraw,
-        width: int,
-        height: int,
-    ) -> None:
-        """Apply watermark to image.
-
-        Args:
-            img: PIL Image instance
-            draw: PIL ImageDraw instance
-            width: Image width
-            height: Image height
-        """
-        # Create semi-transparent watermark text
-        watermark_size = max(24, width // 40)
-
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", watermark_size)
-        except Exception:
-            font = ImageFont.load_default()
-
-        # Position in bottom-right corner
-        bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-
-        x = width - text_width - 20
-        y = height - text_height - 20
-
-        # Draw with semi-transparency
-        draw.text(
-            (x, y),
-            WATERMARK_TEXT,
-            fill=(0, 0, 0, WATERMARK_OPACITY),
-            font=font,
-        )
-
-    def _get_placeholder_svg_elements(
-        self,
-        width: int,
-        height: int,
-        map_obj: Map,
-    ) -> list[str]:
-        """Get placeholder SVG elements (replace with actual map rendering).
-
-        Args:
-            width: SVG width
-            height: SVG height
-            map_obj: Map instance
-
-        Returns:
-            List of SVG element strings
-        """
-        elements = []
-
-        # Add title
-        title_size = max(20, width // 30)
-        elements.append(
-            f'<text x="{width // 2}" y="40" '
-            f'text-anchor="middle" font-size="{title_size}" '
-            f'font-weight="bold" fill="#323232">{map_obj.name}</text>'
-        )
-
-        # Add placeholder regions
-        padding = width // 20
-        region_width = (width - 3 * padding) // 2
-        region_height = (height - 3 * padding) // 2
-
-        colors = ["#c8dcf0", "#dcf0c8", "#f0dcc8", "#f0c8dc"]
-
-        for i in range(4):
-            row = i // 2
-            col = i % 2
-            x = padding + col * (region_width + padding)
-            y = 100 + padding + row * (region_height + padding)
-
-            elements.append(
-                f'<rect x="{x}" y="{y}" width="{region_width}" '
-                f'height="{region_height}" fill="{colors[i]}" '
-                f'stroke="#646464" stroke-width="2"/>'
-            )
-
-            label_x = x + region_width // 2
-            label_y = y + region_height // 2
-            elements.append(
-                f'<text x="{label_x}" y="{label_y}" '
-                f'text-anchor="middle" font-size="{title_size}" '
-                f'fill="#323232">Region {i + 1}</text>'
-            )
-
-        return elements
-
-    def _get_watermark_svg(self, width: int, height: int) -> str:
-        """Get SVG watermark element.
-
-        Args:
-            width: SVG width
-            height: SVG height
-
-        Returns:
-            SVG watermark element string
-        """
-        watermark_size = max(24, width // 40)
-        x = width - 20
-        y = height - 20
-
-        return (
-            f'<text x="{x}" y="{y}" '
-            f'text-anchor="end" font-size="{watermark_size}" '
-            f'font-weight="bold" fill="#000000" '
-            f'opacity="0.5">{WATERMARK_TEXT}</text>'
-        )
+        return list(result.scalars().all()), total
 
 
 def get_export_service(db: AsyncSession) -> ExportService:
-    """Factory function to create ExportService.
-
-    Args:
-        db: Database session
-
-    Returns:
-        Configured ExportService instance
-    """
     return ExportService(db)

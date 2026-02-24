@@ -48,7 +48,7 @@ class Export(Base):
 
     # Export configuration
     format: Mapped[ExportFormat] = mapped_column(
-        SQLEnum(ExportFormat), nullable=False
+        SQLEnum(ExportFormat, values_callable=lambda x: [e.value for e in x]), nullable=False
     )
     resolution: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1
@@ -56,7 +56,7 @@ class Export(Base):
 
     # Export status and result
     status: Mapped[ExportStatus] = mapped_column(
-        SQLEnum(ExportStatus), nullable=False, default=ExportStatus.PENDING, index=True
+        SQLEnum(ExportStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=ExportStatus.PENDING, index=True
     )
     file_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # bytes
