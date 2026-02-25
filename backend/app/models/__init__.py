@@ -19,9 +19,11 @@ from app.models.theme import Theme
 from app.models.token_balance import TokenBalance
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
+from app.models.user_profile import UserProfile
 
 __all__ = [
     "User",
+    "UserProfile",
     "TokenBalance",
     "Transaction",
     "TransactionType",
