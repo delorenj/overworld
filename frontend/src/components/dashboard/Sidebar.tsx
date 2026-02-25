@@ -6,7 +6,7 @@
  */
 
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Map, Settings, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Map, Settings, Upload, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/dashboard/maps', icon: Map, label: 'My Maps' },
   { to: '/dashboard/upload', icon: Upload, label: 'Upload' },
+  { to: '/dashboard/profile', icon: User, label: 'Profile' },
   { to: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ];
 

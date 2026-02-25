@@ -17,6 +17,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MyMapsPage } from './pages/MyMapsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 // Layout
 import { DashboardLayout } from './components/dashboard/DashboardLayout';
@@ -40,6 +41,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="maps" element={<MyMapsPage />} />
             <Route path="upload" element={<UploadPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="profile" element={<ProfilePage />} />
           </Route>
 
           {/* Map View (can be accessed with map ID) */}
