@@ -14,8 +14,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = None  # Will be auto-detected by alembic
+revision: str = "20260225_0200"
+down_revision: Union[str, None] = "9e408895f93a"  # Depends on project/consensus analysis migration
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

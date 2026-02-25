@@ -12,6 +12,7 @@ from app.api.v1.routers import (
     stripe,
     themes,
     tokens,
+    users,
     websocket,
 )
 
@@ -26,5 +27,6 @@ api_router.include_router(jobs.router)  # New ARQ-based job queue endpoints
 api_router.include_router(stripe.router)  # Stripe payment integration
 api_router.include_router(themes.router)  # Theme management and customization
 api_router.include_router(tokens.router)  # Token balance and transaction endpoints
+api_router.include_router(users.router)  # User profile and preferences endpoints
 api_router.include_router(websocket.router)  # WebSocket for real-time progress
 api_router.include_router(export.router)  # Map export endpoints
