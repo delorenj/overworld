@@ -10,6 +10,7 @@ from app.api.v1.routers import (
     jobs,
     projects,
     stripe,
+    themes,
     tokens,
     websocket,
 )
@@ -23,6 +24,7 @@ api_router.include_router(projects.router)  # Project management and consensus a
 api_router.include_router(generation.router)  # Legacy generation endpoints
 api_router.include_router(jobs.router)  # New ARQ-based job queue endpoints
 api_router.include_router(stripe.router)  # Stripe payment integration
+api_router.include_router(themes.router)  # Theme management and customization
 api_router.include_router(tokens.router)  # Token balance and transaction endpoints
 api_router.include_router(websocket.router)  # WebSocket for real-time progress
 api_router.include_router(export.router)  # Map export endpoints
