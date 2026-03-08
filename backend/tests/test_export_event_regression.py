@@ -146,6 +146,27 @@ class TestExportEventRoundTrip:
         with pytest.raises(ValidationError):
             OverworldExportGeneratedV1.model_validate_json(bad_payload)
 
+    @pytest.mark.xfail(
+        reason="Known gap: export event format is unconstrained string; should enforce png/svg",
+    )
+    def test_import_rejects_unsupported_export_format(self):
+        """Unsupported formats should be rejected at schema import time."""
+        bad_format_payload = json.dumps(
+            {
+                "source": {"host": "qa-runner", "trigger_type": "background_job"},
+                "user_id": 1,
+                "export_id": 2,
+                "map_id": 3,
+                "format": "pdf",
+                "resolution": 2,
+                "watermarked": True,
+                "file_size_bytes": 100,
+            }
+        )
+
+        with pytest.raises(ValidationError):
+            OverworldExportGeneratedV1.model_validate_json(bad_format_payload)
+
 
 class TestExportEventEmission:
     """Emitter-level regression checks for watermark + format propagation."""
