@@ -6,65 +6,72 @@ This module provides REST endpoints for:
 - POST /api/v1/tokens/estimate - Estimate job cost
 """
 
-import logging
-from typing import Optional
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_optional_user
+from app.api.deps import (
+    build_anonymous_client_hash,
+    get_current_user,
+    get_db,
+    get_optional_user,
+    require_admin_api_key,
+)
 from app.models.user import User
 from app.models.transaction import TransactionType
 from app.schemas.token import (
+    AdminCreditRequest,
+    AdminCreditResponse,
+    AnonymousBalanceResponse,
+    CostBreakdown,
+    CostEstimateRequest,
+    CostEstimateResponse,
     TokenBalanceResponse,
     TransactionHistoryResponse,
     TransactionResponse,
-    CostEstimateRequest,
-    CostEstimateResponse,
-    CostBreakdown,
 )
-from app.services.token_service import TokenService, get_token_service
-
-logger = logging.getLogger(__name__)
+from app.services.token_service import (
+    ANONYMOUS_OPERATION_EXPORT,
+    AnonymousFreeTierExceededError,
+    get_token_service,
+)
 
 router = APIRouter(prefix="/tokens", tags=["tokens"])
 
 
 @router.get(
     "/balance",
-    response_model=TokenBalanceResponse,
+    response_model=Union[TokenBalanceResponse, AnonymousBalanceResponse],
     summary="Get token balance",
-    description="Get the current token balance for the authenticated user",
+    description="Get token balance for authenticated users, or free-tier balance for anonymous users",
 )
 async def get_balance(
-    current_user: User = Depends(get_current_user),
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
-) -> TokenBalanceResponse:
-    """Get the current user's token balance.
-
-    Returns detailed balance information including:
-    - Free tokens (reset monthly)
-    - Purchased tokens (persistent)
-    - Total available tokens
-    - Low balance warning flag
-
-    Args:
-        current_user: Authenticated user
-        db: Database session
-
-    Returns:
-        TokenBalanceResponse with balance details
-    """
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+) -> Union[TokenBalanceResponse, AnonymousBalanceResponse]:
+    """Get token balance for authenticated or anonymous users."""
     token_service = get_token_service(db)
-    balance_details = await token_service.get_balance_details(current_user.id)
 
-    return TokenBalanceResponse(
-        free_tokens=balance_details["free_tokens"],
-        purchased_tokens=balance_details["purchased_tokens"],
-        total_tokens=balance_details["total_tokens"],
-        last_reset_at=balance_details["last_reset_at"],
-        is_low_balance=balance_details["is_low_balance"],
+    if current_user:
+        balance_details = await token_service.get_balance_details(current_user.id)
+        return TokenBalanceResponse(
+            free_tokens=balance_details["free_tokens"],
+            purchased_tokens=balance_details["purchased_tokens"],
+            total_tokens=balance_details["total_tokens"],
+            last_reset_at=balance_details["last_reset_at"],
+            is_low_balance=balance_details["is_low_balance"],
+        )
+
+    client_hash = build_anonymous_client_hash(request, x_session_id)
+    anon_balance = await token_service.get_anonymous_balance(
+        client_id_hash=client_hash,
+        operation=ANONYMOUS_OPERATION_EXPORT,
     )
+
+    return AnonymousBalanceResponse(**anon_balance)
 
 
 @router.get(
@@ -225,3 +232,74 @@ async def check_balance(
         result["shortfall"] = amount - current_balance
 
     return result
+
+
+@router.post(
+    "/anonymous/consume-export",
+    response_model=AnonymousBalanceResponse,
+    summary="Consume anonymous free export",
+    description="Consume one anonymous free-tier export credit tracked by session/IP",
+)
+async def consume_anonymous_export(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+) -> AnonymousBalanceResponse:
+    """Consume one anonymous export free-tier unit."""
+    token_service = get_token_service(db)
+    client_hash = build_anonymous_client_hash(request, x_session_id)
+
+    try:
+        result = await token_service.consume_anonymous_operation(
+            client_id_hash=client_hash,
+            operation=ANONYMOUS_OPERATION_EXPORT,
+            amount=1,
+        )
+        return AnonymousBalanceResponse(**result)
+    except AnonymousFreeTierExceededError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Anonymous free tier exhausted",
+                "limit": e.limit,
+                "used": e.used,
+                "remaining": e.remaining,
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+@router.post(
+    "/credit",
+    response_model=AdminCreditResponse,
+    summary="Admin credit tokens",
+    description="Credit tokens to a user balance (admin-only; webhook-ready)",
+)
+async def credit_tokens(
+    payload: AdminCreditRequest,
+    _: None = Depends(require_admin_api_key),
+    db: AsyncSession = Depends(get_db),
+) -> AdminCreditResponse:
+    """Admin endpoint used to credit user tokens."""
+    token_service = get_token_service(db)
+
+    metadata = payload.metadata or {}
+    if payload.reason:
+        metadata["reason"] = payload.reason
+
+    new_balance = await token_service.add_tokens(
+        user_id=payload.user_id,
+        amount=payload.amount,
+        reason=TransactionType.GRANT,
+        metadata=metadata,
+    )
+
+    return AdminCreditResponse(
+        user_id=payload.user_id,
+        amount=payload.amount,
+        new_balance=new_balance,
+    )

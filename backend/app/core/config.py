@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     STRIPE_PRICE_ID_GUILD: str = ""
     STRIPE_PRICE_ID_STUDIO: str = ""
 
-    # Anonymous User Rate Limiting
-    ANONYMOUS_DAILY_LIMIT: int = 3  # Free map generations per day for anonymous users
+    # Anonymous User Free Tier
+    ANONYMOUS_DAILY_LIMIT: int = 3  # Free export operations per 24h for anonymous users
+
+    # Admin token controls
+    TOKEN_ADMIN_API_KEY: str = ""
 
     # Cloudflare R2
     R2_ACCESS_KEY_ID: str = ""

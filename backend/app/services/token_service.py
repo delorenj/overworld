@@ -8,18 +8,19 @@ This service provides business logic for:
 - Estimating job costs based on document size
 """
 
+import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
+from app.models.anonymous_usage import AnonymousUsage
+from app.models.document import Document
 from app.models.token_balance import TokenBalance
 from app.models.transaction import Transaction, TransactionType
-from app.models.user import User
-from app.models.document import Document
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ TOKENS_PER_KB = 0.1  # 0.1 tokens per KB of document size
 MIN_GENERATION_COST = 1  # Minimum cost for any generation
 MAX_GENERATION_COST = 50  # Maximum cost cap
 LOW_BALANCE_THRESHOLD = 10  # Warning threshold
+EXPORT_TOKEN_COST = 1  # Fixed token cost per export request
+
+ANONYMOUS_OPERATION_EXPORT = "export"
+ANONYMOUS_WINDOW_HOURS = 24
 
 
 class InsufficientTokensError(Exception):
@@ -39,6 +44,18 @@ class InsufficientTokensError(Exception):
         self.available = available
         super().__init__(
             f"Insufficient tokens: required {required}, available {available}"
+        )
+
+
+class AnonymousFreeTierExceededError(Exception):
+    """Raised when an anonymous user exceeds their free-tier quota."""
+
+    def __init__(self, limit: int, used: int):
+        self.limit = limit
+        self.used = used
+        self.remaining = max(0, limit - used)
+        super().__init__(
+            f"Anonymous free-tier exceeded: used {used}/{limit} operations"
         )
 
 
@@ -85,6 +102,72 @@ class TokenService:
             "total_tokens": balance.total_tokens,
             "last_reset_at": balance.last_reset_at,
             "is_low_balance": balance.total_tokens <= LOW_BALANCE_THRESHOLD,
+        }
+
+    @staticmethod
+    def build_anonymous_client_hash(
+        ip_address: Optional[str],
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Build stable anonymous client hash from session + IP fingerprint."""
+        ip = (ip_address or "unknown").strip()
+        session = (session_id or "no-session").strip()
+        raw = f"{ip}:{session}"
+        return hashlib.sha256(raw.encode()).hexdigest()
+
+    async def get_anonymous_balance(
+        self,
+        client_id_hash: str,
+        operation: str = ANONYMOUS_OPERATION_EXPORT,
+    ) -> dict:
+        """Get anonymous free-tier balance for an operation."""
+        usage = await self._get_or_create_anonymous_usage(client_id_hash, operation)
+        remaining = max(0, usage.free_limit - usage.usage_count)
+        return {
+            "operation": usage.operation,
+            "limit": usage.free_limit,
+            "used": usage.usage_count,
+            "remaining": remaining,
+            "window_started_at": usage.window_started_at,
+            "window_expires_at": usage.window_expires_at,
+        }
+
+    async def consume_anonymous_operation(
+        self,
+        client_id_hash: str,
+        operation: str = ANONYMOUS_OPERATION_EXPORT,
+        amount: int = 1,
+    ) -> dict:
+        """Consume anonymous free-tier quota for an operation."""
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+
+        usage = await self._get_or_create_anonymous_usage(client_id_hash, operation)
+
+        if usage.usage_count + amount > usage.free_limit:
+            raise AnonymousFreeTierExceededError(
+                limit=usage.free_limit,
+                used=usage.usage_count,
+            )
+
+        usage.usage_count += amount
+        await self.db.commit()
+        await self.db.refresh(usage)
+
+        remaining = max(0, usage.free_limit - usage.usage_count)
+
+        logger.info(
+            f"Anonymous usage consumed for {operation}: "
+            f"{usage.usage_count}/{usage.free_limit}"
+        )
+
+        return {
+            "operation": usage.operation,
+            "limit": usage.free_limit,
+            "used": usage.usage_count,
+            "remaining": remaining,
+            "window_started_at": usage.window_started_at,
+            "window_expires_at": usage.window_expires_at,
         }
 
     async def add_tokens(
@@ -356,6 +439,46 @@ class TokenService:
             reason=TransactionType.REFUND,
             metadata=refund_metadata,
         )
+
+    async def _get_or_create_anonymous_usage(
+        self,
+        client_id_hash: str,
+        operation: str,
+    ) -> AnonymousUsage:
+        """Get or create anonymous usage row, resetting if the window expired."""
+        stmt = select(AnonymousUsage).where(
+            AnonymousUsage.client_id_hash == client_id_hash,
+            AnonymousUsage.operation == operation,
+        )
+        result = await self.db.execute(stmt)
+        usage = result.scalar_one_or_none()
+
+        now = datetime.now(timezone.utc)
+        default_limit = settings.ANONYMOUS_DAILY_LIMIT
+
+        if usage is None:
+            usage = AnonymousUsage(
+                client_id_hash=client_id_hash,
+                operation=operation,
+                usage_count=0,
+                free_limit=default_limit,
+                window_started_at=now,
+                window_expires_at=now + timedelta(hours=ANONYMOUS_WINDOW_HOURS),
+            )
+            self.db.add(usage)
+            await self.db.commit()
+            await self.db.refresh(usage)
+            return usage
+
+        if usage.window_expires_at <= now:
+            usage.usage_count = 0
+            usage.free_limit = default_limit
+            usage.window_started_at = now
+            usage.window_expires_at = now + timedelta(hours=ANONYMOUS_WINDOW_HOURS)
+            await self.db.commit()
+            await self.db.refresh(usage)
+
+        return usage
 
     async def _get_or_create_balance(self, user_id: int) -> TokenBalance:
         """Get or create a TokenBalance record for a user.

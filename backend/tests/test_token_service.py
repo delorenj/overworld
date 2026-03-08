@@ -20,6 +20,8 @@ from app.models import User, TokenBalance, Transaction
 from app.models.transaction import TransactionType
 from app.models.document import Document, DocumentStatus
 from app.services.token_service import (
+    ANONYMOUS_OPERATION_EXPORT,
+    AnonymousFreeTierExceededError,
     TokenService,
     InsufficientTokensError,
     get_token_service,
@@ -686,6 +688,65 @@ async def test_auto_create_balance_records_initial_grant(
 
     assert tx.tokens_delta == DEFAULT_STARTING_TOKENS
     assert tx.tx_metadata["reason"] == "Initial token grant"
+
+
+# ============================================================================
+# Anonymous Free-Tier Tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_get_anonymous_balance_initial(token_service: TokenService):
+    """Test anonymous balance starts at configured free-tier limit."""
+    client_hash = TokenService.build_anonymous_client_hash("203.0.113.5", "session-abc")
+
+    balance = await token_service.get_anonymous_balance(
+        client_id_hash=client_hash,
+        operation=ANONYMOUS_OPERATION_EXPORT,
+    )
+
+    assert balance["used"] == 0
+    assert balance["remaining"] == balance["limit"]
+    assert balance["operation"] == ANONYMOUS_OPERATION_EXPORT
+
+
+@pytest.mark.asyncio
+async def test_consume_anonymous_operation(token_service: TokenService):
+    """Test consuming anonymous free-tier usage increments counters."""
+    client_hash = TokenService.build_anonymous_client_hash("203.0.113.6", "session-def")
+
+    result = await token_service.consume_anonymous_operation(
+        client_id_hash=client_hash,
+        operation=ANONYMOUS_OPERATION_EXPORT,
+        amount=1,
+    )
+
+    assert result["used"] == 1
+    assert result["remaining"] == result["limit"] - 1
+
+
+@pytest.mark.asyncio
+async def test_consume_anonymous_operation_exhausted(token_service: TokenService):
+    """Test anonymous free-tier exhaustion raises expected error."""
+    client_hash = TokenService.build_anonymous_client_hash("203.0.113.7", "session-ghi")
+
+    balance = await token_service.get_anonymous_balance(
+        client_id_hash=client_hash,
+        operation=ANONYMOUS_OPERATION_EXPORT,
+    )
+
+    for _ in range(balance["limit"]):
+        await token_service.consume_anonymous_operation(
+            client_id_hash=client_hash,
+            operation=ANONYMOUS_OPERATION_EXPORT,
+            amount=1,
+        )
+
+    with pytest.raises(AnonymousFreeTierExceededError):
+        await token_service.consume_anonymous_operation(
+            client_id_hash=client_hash,
+            operation=ANONYMOUS_OPERATION_EXPORT,
+            amount=1,
+        )
 
 
 # ============================================================================

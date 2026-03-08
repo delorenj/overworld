@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_rabbitmq
+from app.api.deps import (
+    get_current_user,
+    get_db,
+    get_rabbitmq,
+    require_generation_tokens,
+)
 from app.core.queue import QueueConfig, rabbitmq
 from app.models.generation_job import GenerationJob, JobStatus
 from app.models.user import User
@@ -17,6 +22,7 @@ from app.schemas.generation_job import (
     JobQueueInfo,
     GenerationRequest,
 )
+from app.services.token_service import InsufficientTokensError, get_token_service
 
 router = APIRouter()
 
@@ -29,6 +35,7 @@ async def create_generation_job(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     rabbitmq_conn=Depends(get_rabbitmq),
+    token_check: dict = Depends(require_generation_tokens),
 ) -> Dict[str, Any]:
     """Create a new map generation job and queue it for processing."""
 
@@ -42,6 +49,31 @@ async def create_generation_job(
     db.add(generation_job)
     await db.commit()
     await db.refresh(generation_job)
+
+    # Consume tokens at job creation for legacy queue path
+    token_service = get_token_service(db)
+    try:
+        await token_service.deduct_tokens(
+            user_id=current_user.id,
+            amount=token_check["required"],
+            reason=f"Legacy generation job #{generation_job.id}",
+            metadata={
+                "operation": "generation",
+                "job_id": generation_job.id,
+                "document_id": job_data.document_id,
+                "queue": "rabbitmq_legacy",
+            },
+        )
+    except InsufficientTokensError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Insufficient token balance",
+                "required": e.required,
+                "available": e.available,
+                "shortfall": e.required - e.available,
+            },
+        )
 
     queue_info = await get_queue_position(db, generation_job.id)
 

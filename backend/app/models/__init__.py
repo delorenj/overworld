@@ -1,5 +1,6 @@
 """SQLAlchemy models for Overworld."""
 
+from app.models.anonymous_usage import AnonymousUsage
 from app.models.consensus import (
     AnalysisStatus,
     Checkpoint,
@@ -24,6 +25,7 @@ from app.models.user_profile import UserProfile
 __all__ = [
     "User",
     "UserProfile",
+    "AnonymousUsage",
     "TokenBalance",
     "Transaction",
     "TransactionType",

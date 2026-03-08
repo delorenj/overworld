@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, require_export_tokens
 from app.models.export import ExportStatus
 from app.models.user import User
 from app.schemas.export import (
@@ -18,6 +18,11 @@ from app.schemas.export import (
     ExportStatusResponse,
 )
 from app.services.export_service import ExportService, get_export_service
+from app.services.token_service import (
+    EXPORT_TOKEN_COST,
+    InsufficientTokensError,
+    get_token_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,7 @@ async def create_export(
     background_tasks: BackgroundTasks,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    token_check: dict = Depends(require_export_tokens),
 ) -> ExportResponse:
     """Create a new export request.
 
@@ -56,6 +62,9 @@ async def create_export(
     export_service = get_export_service(db)
 
     try:
+        # Token sufficiency is enforced via dependency (require_export_tokens)
+        _ = token_check
+
         # Create export record
         export = await export_service.create_export(
             map_id=map_id,
@@ -63,6 +72,20 @@ async def create_export(
             format=export_request.format,
             resolution=export_request.resolution,
             include_watermark=export_request.include_watermark,
+        )
+
+        # Consume tokens for export request
+        token_service = get_token_service(db)
+        await token_service.deduct_tokens(
+            user_id=current_user.id,
+            amount=EXPORT_TOKEN_COST,
+            reason=f"Map export #{export.id}",
+            metadata={
+                "operation": "export",
+                "export_id": export.id,
+                "map_id": map_id,
+                "format": export_request.format.value,
+            },
         )
 
         # Schedule background processing
@@ -88,6 +111,16 @@ async def create_export(
             expires_at=export.expires_at,
         )
 
+    except InsufficientTokensError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Insufficient token balance",
+                "required": e.required,
+                "available": e.available,
+                "shortfall": e.required - e.available,
+            },
+        )
     except ValueError as e:
         logger.warning(f"Export creation failed for map {map_id}: {e}")
         raise HTTPException(
