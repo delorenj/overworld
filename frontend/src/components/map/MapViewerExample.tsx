@@ -43,8 +43,8 @@ export const MapViewerExample: React.FC<MapViewerExampleProps> = ({
     if (user) fetchStats();
   }, [user, getUsageStats]);
 
-  // Determine if user is premium (has tokens)
-  const isPremium = (stats?.tokenBalance ?? 0) > 0;
+  const tokenBalance = stats?.tokenBalance ?? 0;
+  const hasExportTokens = tokenBalance > 0;
 
   if (isLoading) {
     return <div className="map-loading">Loading map...</div>;
@@ -87,20 +87,20 @@ export const MapViewerExample: React.FC<MapViewerExampleProps> = ({
         <ExportDialog
           mapId={mapId}
           mapName={mapName}
-          isPremium={isPremium}
+          tokenBalance={tokenBalance}
           isOpen={showExportDialog}
           onClose={() => setShowExportDialog(false)}
         />
       )}
 
       {/* Premium Notice for Free Users */}
-      {user && !isPremium && (
+      {user && !hasExportTokens && (
         <div className="premium-notice">
           <p>
-            💡 Upgrade to premium to export maps without watermarks!
+            💡 Buy tokens to unlock clean, watermark-free exports.
           </p>
           <button className="upgrade-button">
-            Upgrade Now
+            Buy Tokens
           </button>
         </div>
       )}

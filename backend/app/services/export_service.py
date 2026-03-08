@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.export import Export, ExportFormat, ExportStatus
 from app.models.map import Map
-from app.models.user import User
+from app.services.watermark import apply_png_watermark, build_svg_watermark
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,6 @@ logger = logging.getLogger(__name__)
 EXPORT_EXPIRY_HOURS = 24
 BASE_MAP_WIDTH = 1024
 BASE_MAP_HEIGHT = 768
-WATERMARK_TEXT = "OVERWORLD"
-WATERMARK_OPACITY = 90
 
 # Local export directory for dev mode (no R2)
 LOCAL_EXPORT_DIR = Path("/app/exports")
@@ -201,28 +199,11 @@ def _render_png(
 
     # ── Watermark ──
     if watermarked:
-        _apply_watermark_png(draw, width, height)
+        img = apply_png_watermark(img)
 
     buf = BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
-
-
-def _apply_watermark_png(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
-    """Draw diagonal repeating watermark."""
-    wm_font = _get_font(max(28, w // 20), bold=True)
-    step_x = w // 3
-    step_y = h // 3
-    for iy in range(-1, 4):
-        for ix in range(-1, 4):
-            x = ix * step_x + (iy % 2) * (step_x // 2)
-            y = iy * step_y
-            draw.text(
-                (x, y),
-                WATERMARK_TEXT,
-                fill=(0, 0, 0, WATERMARK_OPACITY),
-                font=wm_font,
-            )
 
 
 # ── SVG rendering ──────────────────────────────────────────────────
@@ -314,7 +295,7 @@ def _render_svg(
 
     # Watermark
     if watermarked:
-        parts.append(_svg_watermark(width, height))
+        parts.append(build_svg_watermark(width, height))
 
     parts.append("</svg>")
     return "\n".join(parts).encode("utf-8")
@@ -322,23 +303,6 @@ def _render_svg(
 
 def _svg_esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-
-def _svg_watermark(w: int, h: int) -> str:
-    fs = max(28, w // 20)
-    lines = []
-    step_x = w // 3
-    step_y = h // 3
-    for iy in range(-1, 4):
-        for ix in range(-1, 4):
-            x = ix * step_x + (iy % 2) * (step_x // 2)
-            y = iy * step_y
-            lines.append(
-                f'<text x="{x}" y="{y}" font-family="DejaVu Sans,sans-serif" '
-                f'font-size="{fs}" font-weight="bold" fill="#000" '
-                f'opacity="0.08">{WATERMARK_TEXT}</text>'
-            )
-    return "\n".join(lines)
 
 
 # ── Service ────────────────────────────────────────────────────────
@@ -363,16 +327,7 @@ class ExportService:
         if not map_obj:
             raise ValueError(f"Map {map_id} not found or access denied")
 
-        # Fetch user to check Stripe subscription status
-        user_stmt = select(User).where(User.id == user_id)
-        user_result = await self.db.execute(user_stmt)
-        user = user_result.scalar_one_or_none()
-        if not user:
-            raise ValueError(f"User {user_id} not found")
-
-        # Free users always get watermark; paid tier (Stripe subscription) can disable
-        is_premium = user.is_premium
-        watermarked = include_watermark if is_premium else True
+        watermarked = include_watermark
 
         expires_at = datetime.now(timezone.utc) + timedelta(hours=EXPORT_EXPIRY_HOURS)
 

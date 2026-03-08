@@ -140,6 +140,35 @@
   font-weight: 600;
 }
 
+.watermark-notice--paid {
+  background-color: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.watermark-preview {
+  position: relative;
+  margin-top: 10px;
+  height: 82px;
+  border-radius: 6px;
+  border: 1px dashed #f59e0b;
+  background: linear-gradient(135deg, #fff8e1, #fffbeb);
+  overflow: hidden;
+}
+
+.watermark-preview span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-20deg);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(146, 64, 14, 0.45);
+}
+
 /* Current Export Status */
 .current-export-status {
   background-color: #f3f4f6;
