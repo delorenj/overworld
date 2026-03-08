@@ -67,10 +67,6 @@ class TestExportService:
         """Test creating an export successfully."""
         service = ExportService(db_session)
 
-        # Set user as premium (Stripe subscription active)
-        test_user.is_premium = True
-        await db_session.commit()
-
         export = await service.create_export(
             map_id=test_map.id,
             user_id=test_user.id,
@@ -85,33 +81,29 @@ class TestExportService:
         assert export.format == ExportFormat.PNG
         assert export.resolution == 2
         assert export.status == ExportStatus.PENDING
-        assert export.watermarked is False  # Premium user, no watermark
+        assert export.watermarked is False
         assert export.expires_at is not None
 
     @pytest.mark.asyncio
-    async def test_create_export_free_user_watermark(
+    async def test_create_export_with_explicit_watermark(
         self,
         db_session: AsyncSession,
         test_user: User,
         test_map: Map,
         mock_r2_service,
     ):
-        """Test that free users always get watermark."""
+        """Test that watermark flag is honored when explicitly requested."""
         service = ExportService(db_session)
-
-        # Ensure user is free tier (no Stripe subscription)
-        test_user.is_premium = False
-        await db_session.commit()
 
         export = await service.create_export(
             map_id=test_map.id,
             user_id=test_user.id,
             format=ExportFormat.SVG,
             resolution=1,
-            include_watermark=False,  # User requested no watermark
+            include_watermark=True,
         )
 
-        assert export.watermarked is True  # Forced for free users
+        assert export.watermarked is True
 
     @pytest.mark.asyncio
     async def test_create_export_invalid_map(
@@ -412,47 +404,25 @@ class TestExportValidation:
 
 
 class TestWatermarkLogic:
-    """Tests for watermark application logic."""
+    """Tests for watermark flag persistence in export records."""
 
     @pytest.mark.asyncio
-    async def test_watermark_applied_free_user(
-        self,
-        db_session: AsyncSession,
-        test_user: User,
-        test_map: Map,
-        mock_r2_service,
-    ):
-        """Test watermark is applied for free users."""
+    async def test_watermark_requested(self, db_session: AsyncSession, test_user: User, test_map: Map, mock_r2_service):
         service = ExportService(db_session)
-
-        # Ensure user is free tier (no Stripe subscription)
-        test_user.is_premium = False
-        await db_session.commit()
 
         export = await service.create_export(
             map_id=test_map.id,
             user_id=test_user.id,
             format=ExportFormat.PNG,
             resolution=1,
-            include_watermark=False,  # Requested no watermark
+            include_watermark=True,
         )
 
         assert export.watermarked is True
 
     @pytest.mark.asyncio
-    async def test_no_watermark_premium_user(
-        self,
-        db_session: AsyncSession,
-        test_user: User,
-        test_map: Map,
-        mock_r2_service,
-    ):
-        """Test no watermark for premium users."""
+    async def test_clean_export_requested(self, db_session: AsyncSession, test_user: User, test_map: Map, mock_r2_service):
         service = ExportService(db_session)
-
-        # Set user as premium (Stripe subscription active)
-        test_user.is_premium = True
-        await db_session.commit()
 
         export = await service.create_export(
             map_id=test_map.id,
@@ -463,28 +433,3 @@ class TestWatermarkLogic:
         )
 
         assert export.watermarked is False
-
-    @pytest.mark.asyncio
-    async def test_optional_watermark_premium_user(
-        self,
-        db_session: AsyncSession,
-        test_user: User,
-        test_map: Map,
-        mock_r2_service,
-    ):
-        """Test premium users can optionally include watermark."""
-        service = ExportService(db_session)
-
-        # Set user as premium (Stripe subscription active)
-        test_user.is_premium = True
-        await db_session.commit()
-
-        export = await service.create_export(
-            map_id=test_map.id,
-            user_id=test_user.id,
-            format=ExportFormat.PNG,
-            resolution=1,
-            include_watermark=True,  # Premium user wants watermark
-        )
-
-        assert export.watermarked is True

@@ -23,7 +23,7 @@ class ExportRequest(BaseModel):
     )
     include_watermark: bool = Field(
         True,
-        description="Whether to include watermark (auto-determined for free users)"
+        description="Whether to include watermark. Setting false requests a clean export and consumes a token when available."
     )
 
     @field_validator("resolution")

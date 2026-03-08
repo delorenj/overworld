@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, require_export_tokens
+from app.api.deps import get_current_user, get_db
 from app.models.export import ExportStatus
 from app.models.user import User
 from app.schemas.export import (
@@ -17,7 +17,7 @@ from app.schemas.export import (
     ExportResponse,
     ExportStatusResponse,
 )
-from app.services.export_service import ExportService, get_export_service
+from app.services.export_service import get_export_service
 from app.services.token_service import (
     EXPORT_TOKEN_COST,
     InsufficientTokensError,
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/maps", tags=["exports"])
     response_model=ExportResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Request map export",
-    description="Create a new export request for a map. Export will be processed in background.",
+    description="Create a new export request for a map. Clean exports consume a token; users without tokens get a watermarked export.",
 )
 async def create_export(
     map_id: int,
@@ -42,7 +42,6 @@ async def create_export(
     background_tasks: BackgroundTasks,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    token_check: dict = Depends(require_export_tokens),
 ) -> ExportResponse:
     """Create a new export request.
 
@@ -62,31 +61,44 @@ async def create_export(
     export_service = get_export_service(db)
 
     try:
-        # Token sufficiency is enforced via dependency (require_export_tokens)
-        _ = token_check
+        token_service = get_token_service(db)
+        available_tokens = await token_service.get_balance(current_user.id)
 
-        # Create export record
+        wants_clean_export = not export_request.include_watermark
+        can_afford_clean_export = available_tokens >= EXPORT_TOKEN_COST
+        should_create_clean_export = wants_clean_export and can_afford_clean_export
+
+        # Zero-balance users are automatically downgraded to watermarked exports.
         export = await export_service.create_export(
             map_id=map_id,
             user_id=current_user.id,
             format=export_request.format,
             resolution=export_request.resolution,
-            include_watermark=export_request.include_watermark,
+            include_watermark=not should_create_clean_export,
         )
 
-        # Consume tokens for export request
-        token_service = get_token_service(db)
-        await token_service.deduct_tokens(
-            user_id=current_user.id,
-            amount=EXPORT_TOKEN_COST,
-            reason=f"Map export #{export.id}",
-            metadata={
-                "operation": "export",
-                "export_id": export.id,
-                "map_id": map_id,
-                "format": export_request.format.value,
-            },
-        )
+        if not export.watermarked:
+            try:
+                await token_service.deduct_tokens(
+                    user_id=current_user.id,
+                    amount=EXPORT_TOKEN_COST,
+                    reason=f"Map export #{export.id}",
+                    metadata={
+                        "operation": "export",
+                        "export_id": export.id,
+                        "map_id": map_id,
+                        "format": export_request.format.value,
+                    },
+                )
+            except InsufficientTokensError:
+                # Balance changed between pre-check and deduction; fall back to watermarked export.
+                export.watermarked = True
+                await db.commit()
+                await db.refresh(export)
+                logger.info(
+                    "Downgraded export %s to watermarked due to insufficient balance at charge time",
+                    export.id,
+                )
 
         # Schedule background processing
         background_tasks.add_task(
@@ -111,16 +123,6 @@ async def create_export(
             expires_at=export.expires_at,
         )
 
-    except InsufficientTokensError as e:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
-                "message": "Insufficient token balance",
-                "required": e.required,
-                "available": e.available,
-                "shortfall": e.required - e.available,
-            },
-        )
     except ValueError as e:
         logger.warning(f"Export creation failed for map {map_id}: {e}")
         raise HTTPException(

@@ -183,12 +183,17 @@ alembic upgrade head
 ## 12. Watermark Behavior
 
 ```python
-# Free user (tokens = 0)
-→ Always watermarked (ignores include_watermark=false)
+# User with no tokens (balance = 0)
+→ Export is automatically watermarked
+→ No token is deducted
 
-# Premium user (tokens > 0)
-→ Respects include_watermark setting
-→ Default: no watermark
+# User with tokens, include_watermark=true
+→ Watermarked export
+→ No token is deducted
+
+# User with tokens, include_watermark=false
+→ Clean export (no watermark)
+→ Deducts 1 export token
 ```
 
 ## 13. Monitoring

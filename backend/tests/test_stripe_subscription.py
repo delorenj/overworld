@@ -94,18 +94,18 @@ async def test_subscription_webhook_activates_premium(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_premium_user_gets_clean_export(db_session: AsyncSession, test_theme):
-    """Test that premium users can get watermark-free exports."""
+async def test_user_can_request_clean_export(db_session: AsyncSession, test_theme):
+    """Test that clean exports can be requested by setting include_watermark=False."""
     from app.models.map import Map
     from app.services.export_service import ExportService
     from app.models.export import ExportFormat
 
-    # Create premium user
+    # Create user
     user = User(
-        email="premium_export@example.com",
+        email="clean_export@example.com",
         password_hash="hashed",
         is_verified=True,
-        is_premium=True,  # Premium user
+        is_premium=False,
     )
     db_session.add(user)
     await db_session.commit()
@@ -115,7 +115,7 @@ async def test_premium_user_gets_clean_export(db_session: AsyncSession, test_the
     map_obj = Map(
         user_id=user.id,
         theme_id=test_theme.id,
-        name="Premium Test Map",
+        name="Clean Export Test Map",
         hierarchy={"title": "Test", "regions": []},
     )
     db_session.add(map_obj)
@@ -132,22 +132,22 @@ async def test_premium_user_gets_clean_export(db_session: AsyncSession, test_the
         include_watermark=False,  # User requests no watermark
     )
 
-    # Premium user should get clean export
+    # Clean export requested
     assert export.watermarked is False
     assert export.user_id == user.id
     assert export.map_id == map_obj.id
 
 
 @pytest.mark.asyncio
-async def test_free_user_forced_watermark(db_session: AsyncSession, test_theme):
-    """Test that free users are forced to have watermarks even if they request clean."""
+async def test_user_can_request_watermarked_export(db_session: AsyncSession, test_theme):
+    """Test that watermarked exports are created when include_watermark=True."""
     from app.models.map import Map
     from app.services.export_service import ExportService
     from app.models.export import ExportFormat
 
-    # Create free user
+    # Create user
     user = User(
-        email="free_export@example.com",
+        email="watermarked_export@example.com",
         password_hash="hashed",
         is_verified=True,
         is_premium=False,  # Free user
@@ -160,25 +160,24 @@ async def test_free_user_forced_watermark(db_session: AsyncSession, test_theme):
     map_obj = Map(
         user_id=user.id,
         theme_id=test_theme.id,
-        name="Free Test Map",
+        name="Watermarked Test Map",
         hierarchy={"title": "Test", "regions": []},
     )
     db_session.add(map_obj)
     await db_session.commit()
     await db_session.refresh(map_obj)
 
-    # Request export without watermark
+    # Request export with watermark enabled
     export_service = ExportService(db_session)
     export = await export_service.create_export(
         map_id=map_obj.id,
         user_id=user.id,
         format=ExportFormat.PNG,
         resolution=1,
-        include_watermark=False,  # User requests no watermark
+        include_watermark=True,
     )
 
-    # Free user should be forced to have watermark
-    assert export.watermarked is True  # Forced!
+    assert export.watermarked is True
     assert export.user_id == user.id
     assert export.map_id == map_obj.id
 

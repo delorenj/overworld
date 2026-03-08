@@ -18,7 +18,7 @@ import './ExportDialog.css';
 interface ExportDialogProps {
   mapId: number;
   mapName: string;
-  isPremium: boolean;
+  tokenBalance: number;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -26,7 +26,7 @@ interface ExportDialogProps {
 export const ExportDialog: React.FC<ExportDialogProps> = ({
   mapId,
   mapName,
-  isPremium,
+  tokenBalance,
   isOpen,
   onClose,
 }) => {
@@ -46,6 +46,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
   const [format, setFormat] = useState<ExportFormat>('png');
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
 
+  const hasExportTokens = tokenBalance > 0;
+
   // Load export history when dialog opens
   useEffect(() => {
     if (isOpen) {
@@ -60,7 +62,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       await requestExport(mapId, {
         format,
         resolution,
-        include_watermark: !isPremium, // Free users always get watermark
+        include_watermark: !hasExportTokens,
       });
     } catch (err) {
       // Error is handled in hook
@@ -149,10 +151,18 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
             </div>
 
             {/* Watermark Notice */}
-            {!isPremium && (
+            {!hasExportTokens ? (
               <div className="watermark-notice">
-                <strong>Note:</strong> Free tier exports include an "Overworld" watermark.
-                Upgrade to premium to remove watermarks.
+                <strong>Free export mode:</strong> This export will include a "Made with Overworld"
+                watermark.
+                <div className="watermark-preview" aria-hidden="true">
+                  <span>Made with Overworld</span>
+                </div>
+              </div>
+            ) : (
+              <div className="watermark-notice watermark-notice--paid">
+                <strong>Clean export:</strong> This export removes watermarks and costs 1 token.
+                <div>Current balance: {tokenBalance.toLocaleString()} token(s)</div>
               </div>
             )}
 
@@ -186,7 +196,11 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
               onClick={handleExport}
               disabled={loading || pollingActive}
             >
-              {loading || pollingActive ? 'Processing...' : 'Export Map'}
+              {loading || pollingActive
+                ? 'Processing...'
+                : hasExportTokens
+                  ? 'Export Map (1 token)'
+                  : 'Export Map (watermarked)'}
             </button>
           </section>
 
