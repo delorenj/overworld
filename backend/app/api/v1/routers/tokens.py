@@ -291,11 +291,11 @@ async def credit_tokens(
     if payload.reason:
         metadata["reason"] = payload.reason
 
-    new_balance = await token_service.add_tokens(
+    new_balance = await token_service.credit_tokens(
         user_id=payload.user_id,
         amount=payload.amount,
-        reason=TransactionType.GRANT,
         metadata=metadata,
+        reason=TransactionType.GRANT,
     )
 
     return AdminCreditResponse(

@@ -98,7 +98,9 @@ export function useMapExport(): UseMapExportResult {
     pollingActive: false,
   });
 
-  const [pollTimeoutId, setPollTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [pollTimeoutId, setPollTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   /**
    * Clear any active polling

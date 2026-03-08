@@ -8,7 +8,7 @@ This module defines request and response models for:
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
 
 
 class SubscriptionPlan(BaseModel):
@@ -92,6 +92,10 @@ class CheckoutRequest(BaseModel):
     cancel_url: HttpUrl = Field(
         description="URL to redirect to if user cancels"
     )
+    customer_email: Optional[EmailStr] = Field(
+        default=None,
+        description="Required for anonymous checkout so purchases can be linked to an account",
+    )
 
     class Config:
         json_schema_extra = {
@@ -99,6 +103,7 @@ class CheckoutRequest(BaseModel):
                 "package_id": "starter",
                 "success_url": "https://example.com/payment/success",
                 "cancel_url": "https://example.com/payment/cancel",
+                "customer_email": "guest@example.com",
             }
         }
 

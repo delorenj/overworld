@@ -12,11 +12,13 @@ import logging
 from typing import Optional
 
 import stripe
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.transaction import TransactionType
-from app.schemas.stripe import TokenPackage, WebhookEvent, SubscriptionPlan
+from app.models.user import User
+from app.schemas.stripe import TokenPackage, SubscriptionPlan
 from app.services.token_service import TokenService
 
 logger = logging.getLogger(__name__)
@@ -56,40 +58,31 @@ SUBSCRIPTION_PLANS: list[SubscriptionPlan] = [
 ]
 PLAN_LOOKUP: dict[str, SubscriptionPlan] = {plan.id: plan for plan in SUBSCRIPTION_PLANS}
 
-# Token package definitions
-# Price structure: Base rate is ~$0.50 per 1000 tokens, with volume discounts
+# Token package definitions (configured via env-backed settings)
 TOKEN_PACKAGES: list[TokenPackage] = [
     TokenPackage(
         id="starter",
         name="Starter Pack",
-        tokens=1000,
-        price_cents=500,  # $5.00 - base rate
+        tokens=settings.STRIPE_TOKEN_PACK_STARTER_TOKENS,
+        price_cents=settings.STRIPE_TOKEN_PACK_STARTER_PRICE_CENTS,
         popular=False,
         savings_percent=0,
     ),
     TokenPackage(
-        id="pro",
-        name="Pro Pack",
-        tokens=5000,
-        price_cents=2000,  # $20.00 - 20% savings
+        id="growth",
+        name="Growth Pack",
+        tokens=settings.STRIPE_TOKEN_PACK_GROWTH_TOKENS,
+        price_cents=settings.STRIPE_TOKEN_PACK_GROWTH_PRICE_CENTS,
         popular=True,
         savings_percent=20,
     ),
     TokenPackage(
-        id="enterprise",
-        name="Enterprise Pack",
-        tokens=15000,
-        price_cents=5000,  # $50.00 - 33% savings
+        id="scale",
+        name="Scale Pack",
+        tokens=settings.STRIPE_TOKEN_PACK_SCALE_TOKENS,
+        price_cents=settings.STRIPE_TOKEN_PACK_SCALE_PRICE_CENTS,
         popular=False,
-        savings_percent=33,
-    ),
-    TokenPackage(
-        id="ultimate",
-        name="Ultimate Pack",
-        tokens=50000,
-        price_cents=15000,  # $150.00 - 40% savings
-        popular=False,
-        savings_percent=40,
+        savings_percent=30,
     ),
 ]
 
@@ -195,18 +188,22 @@ class StripeService:
 
     async def create_checkout_session(
         self,
-        user_id: int,
+        user_id: Optional[int],
         package_id: str,
         success_url: str,
         cancel_url: str,
+        anonymous_client_hash: Optional[str] = None,
+        customer_email: Optional[str] = None,
     ) -> tuple[str, str, int]:
         """Create a Stripe checkout session for token purchase.
 
         Args:
-            user_id: User ID making the purchase
+            user_id: Optional user ID for authenticated checkout
             package_id: Token package ID to purchase
             success_url: URL to redirect after successful payment
             cancel_url: URL to redirect if user cancels
+            anonymous_client_hash: Stable hash for anonymous session linkage
+            customer_email: Optional customer email (required for anon checkout)
 
         Returns:
             Tuple of (session_id, checkout_url, expires_at)
@@ -215,19 +212,36 @@ class StripeService:
             InvalidPackageError: If package ID is invalid
             StripeServiceError: If checkout session creation fails
         """
-        # Validate package
         package = self.get_package(package_id)
 
+        if user_id is None and not anonymous_client_hash:
+            raise StripeServiceError(
+                "Anonymous checkout requires anonymous_client_hash"
+            )
+
+        metadata = {
+            "package_id": package_id,
+            "tokens": str(package.tokens),
+            "checkout_origin": "authenticated" if user_id else "anonymous",
+        }
+        if user_id is not None:
+            metadata["user_id"] = str(user_id)
+        if anonymous_client_hash:
+            metadata["anonymous_client_hash"] = anonymous_client_hash
+
         logger.info(
-            f"Creating checkout session for user {user_id}, "
-            f"package {package_id} ({package.tokens} tokens, {package.price_display})"
+            "Creating checkout session",
+            extra={
+                "user_id": user_id,
+                "package_id": package_id,
+                "anonymous": user_id is None,
+            },
         )
 
         try:
-            # Create Stripe checkout session
-            session = stripe.checkout.Session.create(
-                payment_method_types=["card"],
-                line_items=[
+            checkout_params = {
+                "payment_method_types": ["card"],
+                "line_items": [
                     {
                         "price_data": {
                             "currency": package.currency,
@@ -240,20 +254,25 @@ class StripeService:
                         "quantity": 1,
                     }
                 ],
-                mode="payment",
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata={
-                    "user_id": str(user_id),
-                    "package_id": package_id,
-                    "tokens": str(package.tokens),
-                },
-                client_reference_id=str(user_id),
-                expires_at=None,  # Use Stripe's default expiration (24 hours)
-            )
+                "mode": "payment",
+                "success_url": success_url,
+                "cancel_url": cancel_url,
+                "metadata": metadata,
+            }
+
+            if user_id is not None:
+                checkout_params["client_reference_id"] = str(user_id)
+            else:
+                checkout_params["customer_creation"] = "always"
+
+            if customer_email:
+                checkout_params["customer_email"] = customer_email
+
+            session = stripe.checkout.Session.create(**checkout_params)
 
             logger.info(
-                f"Checkout session created: {session.id} for user {user_id}"
+                f"Checkout session created: {session.id} for "
+                f"{'user ' + str(user_id) if user_id else 'anonymous checkout'}"
             )
 
             return session.id, session.url, session.expires_at
@@ -392,24 +411,24 @@ class StripeService:
         session = event["data"]["object"]
         event_id = event["id"]
 
-        # Extract metadata
-        user_id = session.get("metadata", {}).get("user_id")
-        package_id = session.get("metadata", {}).get("package_id")
-        plan_id = session.get("metadata", {}).get("plan_id")
+        metadata = session.get("metadata", {})
+        package_id = metadata.get("package_id")
+        plan_id = metadata.get("plan_id")
         payment_status = session.get("payment_status")
-        checkout_type = session.get("metadata", {}).get("type", "token_purchase")
+        checkout_type = metadata.get("type", "token_purchase")
+
+        # Resolve user from explicit metadata or anonymous email conversion flow
+        user_id, user_created = await self._resolve_checkout_user(
+            metadata=metadata,
+            session=session,
+        )
+        anonymous_client_hash = metadata.get("anonymous_client_hash")
 
         logger.info(
             f"Processing checkout.session.completed: "
             f"session={session['id']}, user={user_id}, type={checkout_type}, "
-            f"status={payment_status}"
+            f"status={payment_status}, created={user_created}"
         )
-
-        # Validate required fields
-        if not user_id:
-            raise PaymentProcessingError(
-                f"Missing user_id in session {session['id']}"
-            )
 
         # Handle subscription checkout
         if checkout_type == "subscription":
@@ -463,7 +482,13 @@ class StripeService:
         # Check for duplicate processing (idempotency)
         # The stripe_event_id in Transaction table ensures we never double-grant
         try:
-            new_balance = await self.token_service.add_tokens(
+            if anonymous_client_hash:
+                await self.token_service.link_anonymous_session_to_user(
+                    client_id_hash=anonymous_client_hash,
+                    user_id=int(user_id),
+                )
+
+            new_balance = await self.token_service.credit_tokens(
                 user_id=int(user_id),
                 amount=package.tokens,
                 reason=TransactionType.PURCHASE,
@@ -474,6 +499,8 @@ class StripeService:
                     "currency": package.currency,
                     "session_id": session["id"],
                     "customer_email": session.get("customer_details", {}).get("email"),
+                    "anonymous_client_hash": anonymous_client_hash,
+                    "converted_account_created": user_created,
                 },
                 stripe_event_id=event_id,
             )
@@ -489,6 +516,7 @@ class StripeService:
                 "tokens_granted": package.tokens,
                 "new_balance": new_balance,
                 "package": package_id,
+                "account_created": user_created,
             }
 
         except Exception as e:
@@ -510,6 +538,56 @@ class StripeService:
             raise PaymentProcessingError(
                 f"Failed to grant tokens: {str(e)}"
             )
+
+    async def _resolve_checkout_user(
+        self,
+        metadata: dict,
+        session: dict,
+    ) -> tuple[int, bool]:
+        """Resolve user for checkout completion.
+
+        Returns:
+            tuple[user_id, user_created]
+        """
+        explicit_user_id = metadata.get("user_id")
+        if explicit_user_id:
+            try:
+                return int(explicit_user_id), False
+            except (TypeError, ValueError) as exc:
+                raise PaymentProcessingError(
+                    f"Invalid user_id in session {session.get('id')}"
+                ) from exc
+
+        customer_email = (
+            session.get("customer_details", {}).get("email")
+            or session.get("customer_email")
+        )
+        if not customer_email:
+            raise PaymentProcessingError(
+                f"Anonymous checkout {session.get('id')} missing customer email"
+            )
+
+        normalized_email = customer_email.lower().strip()
+        user_stmt = select(User).where(User.email == normalized_email)
+        user_result = await self.db.execute(user_stmt)
+        user = user_result.scalar_one_or_none()
+
+        if user:
+            return user.id, False
+
+        user = User(
+            email=normalized_email,
+            password_hash=None,
+            is_verified=True,
+        )
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        logger.info(
+            f"Created user {user.id} from anonymous Stripe checkout ({normalized_email})"
+        )
+        return user.id, True
 
     async def process_subscription_event(
         self,
