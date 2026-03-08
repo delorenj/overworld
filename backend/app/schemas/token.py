@@ -92,3 +92,31 @@ class InsufficientBalanceResponse(BaseModel):
     required: int = Field(description="Tokens required for operation")
     available: int = Field(description="Tokens currently available")
     shortfall: int = Field(description="Additional tokens needed")
+
+
+class AnonymousBalanceResponse(BaseModel):
+    """Anonymous free-tier balance response."""
+
+    operation: str = Field(description="Anonymous operation key")
+    limit: int = Field(description="Free-tier operation limit per window")
+    used: int = Field(description="Used operations in the current window")
+    remaining: int = Field(description="Remaining free operations")
+    window_started_at: datetime = Field(description="Current window start timestamp")
+    window_expires_at: datetime = Field(description="Current window expiration timestamp")
+
+
+class AdminCreditRequest(BaseModel):
+    """Admin request for crediting user tokens."""
+
+    user_id: int = Field(description="Target user ID", gt=0)
+    amount: int = Field(description="Token amount to credit", gt=0)
+    reason: Optional[str] = Field(default=None, description="Optional reason for audit trail")
+    metadata: Optional[dict] = Field(default=None, description="Optional metadata payload")
+
+
+class AdminCreditResponse(BaseModel):
+    """Admin token credit response."""
+
+    user_id: int = Field(description="Credited user ID")
+    amount: int = Field(description="Credited token amount")
+    new_balance: int = Field(description="New total token balance")

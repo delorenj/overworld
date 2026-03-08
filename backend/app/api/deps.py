@@ -9,16 +9,24 @@ This module provides dependency injection functions for:
 
 from typing import AsyncGenerator, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as redis
 
+from app.core.config import settings
 from app.core.database import get_db as get_db_session
 from app.core.redis import get_redis as get_redis_client
-from app.core.arq_config import get_arq_pool
 from app.models.user import User
+from app.schemas.generation_job import GenerationJobCreate
 from app.services.job_queue import JobQueueService
+from app.services.token_service import (
+    ANONYMOUS_OPERATION_EXPORT,
+    EXPORT_TOKEN_COST,
+    AnonymousFreeTierExceededError,
+    TokenService,
+    get_token_service,
+)
 from app.services.auth_service import (
     AuthService,
     InvalidTokenError,
@@ -171,6 +179,116 @@ async def get_current_active_user(
             detail="User account not verified",
         )
     return current_user
+
+
+def get_client_ip(request: Request) -> str:
+    """Extract best-effort client IP (proxy-aware)."""
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def build_anonymous_client_hash(request: Request, session_id: Optional[str] = None) -> str:
+    """Build anonymous client hash from IP + session id."""
+    cookie_session = request.cookies.get("overworld_session")
+    return TokenService.build_anonymous_client_hash(
+        ip_address=get_client_ip(request),
+        session_id=session_id or cookie_session,
+    )
+
+
+async def require_generation_tokens(
+    job_data: GenerationJobCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Dependency: ensure authenticated user can afford generation request."""
+    token_service = get_token_service(db)
+    estimate = await token_service.estimate_job_cost(document_id=job_data.document_id)
+    required = estimate["estimated_cost"]
+    available = await token_service.get_balance(current_user.id)
+
+    if available < required:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Insufficient token balance",
+                "required": required,
+                "available": available,
+                "shortfall": required - available,
+            },
+        )
+
+    return {"required": required, "available": available}
+
+
+async def require_export_tokens(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Dependency: ensure authenticated user can afford an export."""
+    token_service = get_token_service(db)
+    available = await token_service.get_balance(current_user.id)
+
+    if available < EXPORT_TOKEN_COST:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Insufficient token balance",
+                "required": EXPORT_TOKEN_COST,
+                "available": available,
+                "shortfall": EXPORT_TOKEN_COST - available,
+            },
+        )
+
+    return {"required": EXPORT_TOKEN_COST, "available": available}
+
+
+async def consume_anonymous_export_quota(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
+) -> dict:
+    """Consume one anonymous free-tier export unit based on session/IP fingerprint."""
+    token_service = get_token_service(db)
+    client_hash = build_anonymous_client_hash(request, x_session_id)
+
+    try:
+        return await token_service.consume_anonymous_operation(
+            client_id_hash=client_hash,
+            operation=ANONYMOUS_OPERATION_EXPORT,
+            amount=1,
+        )
+    except AnonymousFreeTierExceededError as e:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Anonymous free tier exhausted",
+                "limit": e.limit,
+                "used": e.used,
+                "remaining": e.remaining,
+            },
+        )
+
+
+async def require_admin_api_key(
+    x_admin_key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+) -> None:
+    """Dependency: verify admin key for privileged token operations."""
+    if not settings.TOKEN_ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin token crediting is not configured",
+        )
+
+    if not x_admin_key or x_admin_key != settings.TOKEN_ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid admin key",
+        )
 
 
 def get_token_from_header(

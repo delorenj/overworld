@@ -20,7 +20,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db, get_job_queue_service
+from app.api.deps import (
+    get_current_user,
+    get_db,
+    get_job_queue_service,
+    require_generation_tokens,
+)
 from app.models.generation_job import JobStatus
 from app.models.user import User
 from app.schemas.generation_job import (
@@ -31,7 +36,6 @@ from app.schemas.generation_job import (
     JobProgressUpdate,
 )
 from app.services.job_queue import JobQueueService
-from app.services.token_service import get_token_service, InsufficientTokensError
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +52,8 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 async def create_job(
     job_data: GenerationJobCreate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
     job_service: JobQueueService = Depends(get_job_queue_service),
+    token_check: dict = Depends(require_generation_tokens),
 ) -> GenerationJobResponse:
     """Create a new map generation job.
 
@@ -62,7 +66,6 @@ async def create_job(
     Args:
         job_data: Job creation request
         current_user: Authenticated user
-        db: Database session
         job_service: Job queue service
 
     Returns:
@@ -72,41 +75,8 @@ async def create_job(
         HTTPException: 402 if insufficient token balance
         HTTPException: 500 if job creation fails
     """
-    # Check token balance before creating job
-    token_service = get_token_service(db)
-
-    # Estimate cost based on document
-    cost_estimate = await token_service.estimate_job_cost(
-        document_id=job_data.document_id
-    )
-    estimated_cost = cost_estimate["estimated_cost"]
-
-    # Check if user has sufficient balance
-    try:
-        has_balance = await token_service.check_sufficient_balance(
-            current_user.id, estimated_cost
-        )
-        if not has_balance:
-            current_balance = await token_service.get_balance(current_user.id)
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail={
-                    "message": "Insufficient token balance",
-                    "required": estimated_cost,
-                    "available": current_balance,
-                    "shortfall": estimated_cost - current_balance,
-                },
-            )
-    except InsufficientTokensError as e:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
-                "message": "Insufficient token balance",
-                "required": e.required,
-                "available": e.available,
-                "shortfall": e.required - e.available,
-            },
-        )
+    # Token sufficiency is enforced via dependency (require_generation_tokens)
+    _ = token_check
 
     try:
         job = await job_service.create_job(
