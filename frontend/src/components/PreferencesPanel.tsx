@@ -118,7 +118,9 @@ export function PreferencesPanel({ initialPreferences, onUpdate }: PreferencesPa
             <Switch
               id="auto-watermark"
               checked={preferences.auto_watermark}
-              onCheckedChange={(checked) => updatePreference('auto_watermark', checked)}
+              onCheckedChange={(checked: boolean) =>
+                updatePreference('auto_watermark', checked)
+              }
             />
           </div>
         </CardContent>
@@ -156,7 +158,7 @@ export function PreferencesPanel({ initialPreferences, onUpdate }: PreferencesPa
             <Label htmlFor="language">Language</Label>
             <Select
               value={preferences.language}
-              onValueChange={(value) => updatePreference('language', value)}
+              onValueChange={(value: string) => updatePreference('language', value)}
             >
               <SelectTrigger id="language">
                 <SelectValue />
@@ -192,7 +194,9 @@ export function PreferencesPanel({ initialPreferences, onUpdate }: PreferencesPa
             <Switch
               id="notifications"
               checked={preferences.notifications_enabled}
-              onCheckedChange={(checked) => updatePreference('notifications_enabled', checked)}
+              onCheckedChange={(checked: boolean) =>
+                updatePreference('notifications_enabled', checked)
+              }
             />
           </div>
 
@@ -206,7 +210,9 @@ export function PreferencesPanel({ initialPreferences, onUpdate }: PreferencesPa
             <Switch
               id="marketing"
               checked={preferences.email_marketing}
-              onCheckedChange={(checked) => updatePreference('email_marketing', checked)}
+              onCheckedChange={(checked: boolean) =>
+                updatePreference('email_marketing', checked)
+              }
             />
           </div>
         </CardContent>

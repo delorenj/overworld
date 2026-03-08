@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -28,6 +28,14 @@ class AnonymousUsage(Base):
 
     # Operation key (e.g. "export")
     operation: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+
+    # Optional linked account after anonymous purchase conversion
+    linked_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Rolling window usage and limit snapshot
     usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

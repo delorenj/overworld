@@ -232,6 +232,61 @@ class TokenService:
 
         return balance.total_tokens
 
+    async def credit_tokens(
+        self,
+        user_id: int,
+        amount: int,
+        metadata: Optional[dict] = None,
+        reason: TransactionType = TransactionType.GRANT,
+        stripe_event_id: Optional[str] = None,
+    ) -> int:
+        """Credit tokens via a single webhook/admin-friendly pathway.
+
+        This is the shared path used by:
+        - Admin API token credits
+        - Stripe webhook purchase grants
+
+        Args:
+            user_id: Target user ID
+            amount: Positive token amount to add
+            metadata: Optional transaction metadata
+            reason: Transaction type (GRANT, PURCHASE, REFUND, etc.)
+            stripe_event_id: Optional Stripe event ID for idempotency
+
+        Returns:
+            New total token balance
+        """
+        return await self.add_tokens(
+            user_id=user_id,
+            amount=amount,
+            reason=reason,
+            metadata=metadata,
+            stripe_event_id=stripe_event_id,
+        )
+
+    async def link_anonymous_session_to_user(
+        self,
+        client_id_hash: str,
+        user_id: int,
+    ) -> None:
+        """Link anonymous usage rows to a user after checkout conversion."""
+        if not client_id_hash:
+            return
+
+        stmt = select(AnonymousUsage).where(
+            AnonymousUsage.client_id_hash == client_id_hash
+        )
+        result = await self.db.execute(stmt)
+        rows = list(result.scalars().all())
+
+        if not rows:
+            return
+
+        for row in rows:
+            row.linked_user_id = user_id
+
+        await self.db.commit()
+
     async def deduct_tokens(
         self,
         user_id: int,

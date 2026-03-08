@@ -10,7 +10,6 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import * as userApi from '../services/userApi';
 
 // Mock localStorage for testing
 const mockLocalStorage = (() => {
@@ -31,8 +30,6 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 describe('User Profile API Integration', () => {
-  let token: string;
-
   beforeAll(async () => {
     // This test requires a live backend
     // Set a valid JWT token from a test user

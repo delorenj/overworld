@@ -13,6 +13,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { MapGallery } from '../components/dashboard/MapGallery';
+import { BuyTokensModal } from '../components/tokens/BuyTokensModal';
 import type { UsageStats } from '../types/user';
 import type { MapItem } from '../types/dashboard';
 import { formatBytes } from '../lib/utils';
@@ -52,7 +53,7 @@ const MOCK_RECENT_MAPS: MapItem[] = [
 ];
 
 export function DashboardPage() {
-  const { user, getUsageStats } = useAuth();
+  const { user, token, getUsageStats } = useAuth();
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [recentMaps, setRecentMaps] = useState<MapItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,6 +116,9 @@ export function DashboardPage() {
             <p className="text-xs text-muted-foreground">
               {stats ? `${stats.tokensUsed.toLocaleString()} tokens used` : 'Loading...'}
             </p>
+            <div className="mt-3">
+              <BuyTokensModal authToken={token} defaultEmail={user?.email} />
+            </div>
           </CardContent>
         </Card>
 

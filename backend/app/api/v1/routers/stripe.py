@@ -8,11 +8,17 @@ This module provides REST endpoints for:
 """
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import (
+    build_anonymous_client_hash,
+    get_current_user,
+    get_db,
+    get_optional_user,
+)
 from app.core.config import settings
 from app.models.user import User
 from app.schemas.stripe import (
@@ -170,44 +176,49 @@ async def get_stripe_config() -> dict:
     description="Create a Stripe checkout session for token purchase",
 )
 async def create_checkout_session(
-    request: CheckoutRequest,
-    current_user: User = Depends(get_current_user),
+    payload: CheckoutRequest,
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID"),
 ) -> CheckoutResponse:
     """Create a Stripe checkout session for token purchase.
 
-    This endpoint creates a Stripe checkout session and returns the
-    checkout URL where the user should be redirected to complete payment.
-
-    The checkout session includes:
-    - Selected token package
-    - User metadata for webhook processing
-    - Success/cancel redirect URLs
-
-    Args:
-        request: Checkout request with package_id and redirect URLs
-        current_user: Authenticated user
-        db: Database session
-
-    Returns:
-        CheckoutResponse with session_id and checkout_url
-
-    Raises:
-        HTTPException(400): If package_id is invalid
-        HTTPException(503): If Stripe is not configured or unavailable
+    Supports both authenticated and anonymous checkout:
+    - Authenticated users are linked directly via user_id metadata
+    - Anonymous users are linked via client hash + customer email and
+      converted to a new/existing account at webhook time
     """
     stripe_service = get_stripe_service(db)
 
+    user_id: Optional[int] = current_user.id if current_user else None
+    anonymous_client_hash: Optional[str] = None
+
+    if not user_id:
+        anonymous_client_hash = build_anonymous_client_hash(request, x_session_id)
+        if not payload.customer_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="customer_email is required for anonymous checkout",
+            )
+
     try:
         session_id, checkout_url, expires_at = await stripe_service.create_checkout_session(
-            user_id=current_user.id,
-            package_id=request.package_id,
-            success_url=str(request.success_url),
-            cancel_url=str(request.cancel_url),
+            user_id=user_id,
+            package_id=payload.package_id,
+            success_url=str(payload.success_url),
+            cancel_url=str(payload.cancel_url),
+            anonymous_client_hash=anonymous_client_hash,
+            customer_email=str(payload.customer_email) if payload.customer_email else None,
         )
 
         logger.info(
-            f"Checkout session created for user {current_user.id}: {session_id}"
+            "Checkout session created",
+            extra={
+                "user_id": user_id,
+                "anonymous": user_id is None,
+                "session_id": session_id,
+            },
         )
 
         return CheckoutResponse(

@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     STRIPE_PRICE_ID_GUILD: str = ""
     STRIPE_PRICE_ID_STUDIO: str = ""
 
+    # Stripe token pack pricing config
+    STRIPE_TOKEN_PACK_STARTER_TOKENS: int = 100
+    STRIPE_TOKEN_PACK_STARTER_PRICE_CENTS: int = 499
+    STRIPE_TOKEN_PACK_GROWTH_TOKENS: int = 500
+    STRIPE_TOKEN_PACK_GROWTH_PRICE_CENTS: int = 1999
+    STRIPE_TOKEN_PACK_SCALE_TOKENS: int = 1000
+    STRIPE_TOKEN_PACK_SCALE_PRICE_CENTS: int = 3499
+
     # Anonymous User Free Tier
     ANONYMOUS_DAILY_LIMIT: int = 3  # Free export operations per 24h for anonymous users
 
