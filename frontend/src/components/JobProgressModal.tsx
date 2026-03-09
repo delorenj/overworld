@@ -8,6 +8,7 @@
 import { useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ProgressBar } from './ProgressBar';
+import { StatusBadge, type StatusType } from './StatusBadge';
 import type { JobStatus } from '../types/websocket';
 import './JobProgressModal.css';
 
@@ -40,22 +41,22 @@ function getProgressVariant(status: JobStatus): 'default' | 'success' | 'warning
 }
 
 /**
- * Get status display text
+ * Map JobStatus to StatusBadge StatusType
  */
-function getStatusText(status: JobStatus): string {
+function mapJobStatus(status: JobStatus): StatusType {
   switch (status) {
     case 'pending':
-      return 'Waiting in queue...';
+      return 'pending';
     case 'processing':
-      return 'Processing';
+      return 'processing';
     case 'completed':
-      return 'Completed';
+      return 'complete';
     case 'failed':
-      return 'Failed';
+      return 'error';
     case 'cancelled':
-      return 'Cancelled';
+      return 'warning';
     default:
-      return 'Unknown';
+      return 'draft';
   }
 }
 
@@ -263,8 +264,12 @@ export function JobProgressModal({
           {isConnected && progress && (
             <>
               {/* Status badge */}
-              <div className={`job-progress-badge job-progress-badge--${progress.status}`}>
-                {getStatusText(progress.status)}
+              <div className="flex justify-center mb-4">
+                <StatusBadge
+                  status={mapJobStatus(progress.status)}
+                  size="lg"
+                  showIcon
+                />
               </div>
 
               {/* Progress bar */}

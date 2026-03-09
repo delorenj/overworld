@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Eye, Edit, Trash2, Download, Copy, MoreVertical, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardFooter } from '../ui/card';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { StatusBadge } from '../StatusBadge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,42 +34,6 @@ import type { MapItem, MapStatus, MapAction } from '../../types/dashboard';
 interface MapCardProps {
   map: MapItem;
   onAction?: (mapId: string, action: MapAction) => void;
-}
-
-/**
- * Get badge variant based on map status
- */
-function getStatusBadgeVariant(status: MapStatus): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' {
-  switch (status) {
-    case 'complete':
-      return 'success';
-    case 'generating':
-      return 'warning';
-    case 'draft':
-      return 'secondary';
-    case 'error':
-      return 'destructive';
-    default:
-      return 'default';
-  }
-}
-
-/**
- * Get status display text
- */
-function getStatusText(status: MapStatus): string {
-  switch (status) {
-    case 'complete':
-      return 'Complete';
-    case 'generating':
-      return 'Generating';
-    case 'draft':
-      return 'Draft';
-    case 'error':
-      return 'Error';
-    default:
-      return status;
-  }
 }
 
 export function MapCard({ map, onAction }: MapCardProps) {
@@ -156,13 +120,11 @@ export function MapCard({ map, onAction }: MapCardProps) {
           </div>
 
           {/* Status Badge */}
-          <Badge
-            variant={getStatusBadgeVariant(map.status)}
+          <StatusBadge
+            status={map.status}
             className="absolute top-2 right-2"
-          >
-            {isGenerating && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-            {getStatusText(map.status)}
-          </Badge>
+            size="sm"
+          />
         </div>
 
         {/* Content */}
@@ -181,61 +143,64 @@ export function MapCard({ map, onAction }: MapCardProps) {
         </CardContent>
 
         {/* Footer Actions */}
-        <CardFooter className="p-4 pt-0 flex justify-between items-center">
-          <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleAction('export')}
-              disabled={map.status !== 'complete'}
-              title="Export"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleAction('duplicate')}
-              title="Duplicate"
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
+        <CardFooter className="p-4 pt-0 flex flex-col gap-2">
+          {/* Primary Action: Export (Always Visible) */}
+          <Button
+            className="w-full"
+            variant={map.status === 'complete' ? 'default' : 'secondary'}
+            size="sm"
+            onClick={() => handleAction('export')}
+            disabled={map.status !== 'complete'}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {map.status === 'complete' ? 'Download' : 'Not Ready'}
+          </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">More options</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleAction('view')}>
-                <Eye className="mr-2 h-4 w-4" />
-                View
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAction('edit')}>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAction('export')} disabled={map.status !== 'complete'}>
-                <Download className="mr-2 h-4 w-4" />
-                Export
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAction('duplicate')}>
-                <Copy className="mr-2 h-4 w-4" />
-                Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => handleAction('delete')}
-                className="text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Secondary Actions */}
+          <div className="flex gap-1 w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => handleAction('edit')}
+              disabled={isGenerating}
+            >
+              <Edit className="h-4 w-4 mr-1" />
+              Edit
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => handleAction('view')}
+              disabled={isGenerating}
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              View
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="px-2">
+                  <MoreVertical className="h-4 w-4" />
+                  <span className="sr-only">More options</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleAction('duplicate')}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleAction('delete')}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </CardFooter>
       </Card>
 
