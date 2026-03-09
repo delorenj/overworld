@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Eye, Edit, Trash2, Download, Copy, MoreVertical, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardFooter } from '../ui/card';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
+import { StatusBadge } from '../StatusBadge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,42 +34,6 @@ import type { MapItem, MapStatus, MapAction } from '../../types/dashboard';
 interface MapCardProps {
   map: MapItem;
   onAction?: (mapId: string, action: MapAction) => void;
-}
-
-/**
- * Get badge variant based on map status
- */
-function getStatusBadgeVariant(status: MapStatus): 'default' | 'secondary' | 'success' | 'warning' | 'destructive' {
-  switch (status) {
-    case 'complete':
-      return 'success';
-    case 'generating':
-      return 'warning';
-    case 'draft':
-      return 'secondary';
-    case 'error':
-      return 'destructive';
-    default:
-      return 'default';
-  }
-}
-
-/**
- * Get status display text
- */
-function getStatusText(status: MapStatus): string {
-  switch (status) {
-    case 'complete':
-      return 'Complete';
-    case 'generating':
-      return 'Generating';
-    case 'draft':
-      return 'Draft';
-    case 'error':
-      return 'Error';
-    default:
-      return status;
-  }
 }
 
 export function MapCard({ map, onAction }: MapCardProps) {
@@ -156,13 +120,11 @@ export function MapCard({ map, onAction }: MapCardProps) {
           </div>
 
           {/* Status Badge */}
-          <Badge
-            variant={getStatusBadgeVariant(map.status)}
+          <StatusBadge
+            status={map.status}
             className="absolute top-2 right-2"
-          >
-            {isGenerating && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-            {getStatusText(map.status)}
-          </Badge>
+            size="sm"
+          />
         </div>
 
         {/* Content */}
