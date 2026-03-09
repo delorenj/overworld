@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { MapCard } from './MapCard';
+import { OnboardingEmptyState } from './OnboardingEmptyState';
 import { cn } from '../../lib/utils';
 import type { MapItem, MapFilters, MapAction, MapStatus } from '../../types/dashboard';
 
@@ -50,23 +51,6 @@ function MapCardSkeleton() {
         </div>
         <div className="h-8 w-8 bg-muted rounded" />
       </div>
-    </div>
-  );
-}
-
-/**
- * Empty state when no maps exist
- */
-function EmptyState() {
-  return (
-    <div className="text-center py-12">
-      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
-        <Grid className="h-8 w-8 text-muted-foreground" />
-      </div>
-      <h3 className="text-lg font-medium text-foreground mb-2">No maps yet</h3>
-      <p className="text-muted-foreground mb-4">
-        Upload a document to generate your first map.
-      </p>
     </div>
   );
 }
@@ -171,9 +155,9 @@ export function MapGallery({
     );
   }
 
-  // Empty state
+  // Empty state - show interactive onboarding for first-time users
   if (maps.length === 0) {
-    return <EmptyState />;
+    return <OnboardingEmptyState />;
   }
 
   return (
