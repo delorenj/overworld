@@ -14,43 +14,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Progress } from '../components/ui/progress';
 import { MapGallery } from '../components/dashboard/MapGallery';
 import { BuyTokensModal } from '../components/tokens/BuyTokensModal';
+import { getUserProfile } from '../services/userApi';
+import { getRecentMaps } from '../services/mapsApi';
 import type { UsageStats } from '../types/user';
 import type { MapItem } from '../types/dashboard';
 import { formatBytes } from '../lib/utils';
-
-// Mock data for recent maps - replace with API call
-const MOCK_RECENT_MAPS: MapItem[] = [
-  {
-    id: 'map-1',
-    title: 'Project Architecture',
-    description: 'System architecture overview',
-    thumbnailUrl: 'https://via.placeholder.com/300x200/667eea/ffffff?text=Map+1',
-    status: 'complete',
-    createdAt: '2024-01-15T10:30:00Z',
-    updatedAt: '2024-01-15T14:45:00Z',
-    size: 1024000,
-  },
-  {
-    id: 'map-2',
-    title: 'API Documentation',
-    description: 'REST API endpoints map',
-    thumbnailUrl: 'https://via.placeholder.com/300x200/764ba2/ffffff?text=Map+2',
-    status: 'generating',
-    createdAt: '2024-01-14T09:00:00Z',
-    updatedAt: '2024-01-14T09:15:00Z',
-    size: 512000,
-  },
-  {
-    id: 'map-3',
-    title: 'User Flow Diagram',
-    description: 'User journey visualization',
-    thumbnailUrl: 'https://via.placeholder.com/300x200/f093fb/ffffff?text=Map+3',
-    status: 'draft',
-    createdAt: '2024-01-13T16:20:00Z',
-    updatedAt: '2024-01-13T16:20:00Z',
-    size: 256000,
-  },
-];
 
 export function DashboardPage() {
   const { user, token, getUsageStats } = useAuth();
@@ -61,21 +29,33 @@ export function DashboardPage() {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [usageStats] = await Promise.all([
-          getUsageStats(),
-          // TODO: Add API call for recent maps
+        const [profile, maps] = await Promise.all([
+          getUserProfile(),
+          getRecentMaps(3),
         ]);
+
+        // Transform profile data to stats format
+        const usageStats: UsageStats = {
+          tokenBalance: 0, // TODO: Wire token API when available
+          tokensUsed: 0,
+          mapsGenerated: profile.history.total_maps_created,
+          storageUsed: 0, // TODO: Calculate from map sizes
+          storageLimit: 10 * 1024 * 1024 * 1024, // 10GB default
+        };
+
         setStats(usageStats);
-        setRecentMaps(MOCK_RECENT_MAPS);
+        setRecentMaps(maps);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
+        // Show empty state on error
+        setRecentMaps([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadDashboardData();
-  }, [getUsageStats]);
+  }, []);
 
   const handleMapAction = (mapId: string, action: string) => {
     console.log(`Action ${action} on map ${mapId}`);
