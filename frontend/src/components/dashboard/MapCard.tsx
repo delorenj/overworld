@@ -29,7 +29,7 @@ import {
 } from '../ui/alert-dialog';
 import { cn } from '../../lib/utils';
 import { formatDate } from '../../lib/utils';
-import type { MapItem, MapStatus, MapAction } from '../../types/dashboard';
+import type { MapItem, MapAction } from '../../types/dashboard';
 
 interface MapCardProps {
   map: MapItem;

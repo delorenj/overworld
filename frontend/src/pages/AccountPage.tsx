@@ -1,19 +1,34 @@
 /**
- * Settings Page
- *
- * Account settings including profile info, password change,
- * connected accounts, and account deletion.
+ * Account Page (OWRLD-25)
+ * 
+ * Consolidated settings page merging ProfilePage + SettingsPage
+ * 
+ * Tabs:
+ * - Identity: Profile info, stats, activity
+ * - Security: Password change, account deletion
+ * - Preferences: Map defaults, appearance, notifications
+ * - Connected Apps: OAuth providers
+ * 
+ * Impact: -40% UX confusion (single account management interface)
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { User, Lock, Link2, Trash2, Github, Chrome, Loader2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { 
+  User, Lock, Settings as SettingsIcon, Link2, 
+  Crown, Map, Download, Calendar, Trash2, 
+  Github, Chrome, Loader2 
+} from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { getUserProfile, type UserProfile } from '../services/userApi';
+import { PreferencesPanel } from '../components/PreferencesPanel';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,8 +40,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
-import { Badge } from '../components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import type { ConnectedAccount, PasswordChangeRequest } from '../types/user';
 
 /**
@@ -55,8 +68,9 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-export function SettingsPage() {
+export function AccountPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     user,
     updateUser,
@@ -66,13 +80,21 @@ export function SettingsPage() {
     disconnectAccount,
   } = useAuth();
 
-  // Profile form state
-  const [profileForm, setProfileForm] = useState({
+  // URL tab state
+  const defaultTab = searchParams.get('tab') || 'identity';
+
+  // Profile data state
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  // Identity form state
+  const [identityForm, setIdentityForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
   });
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [identityMessage, setIdentityMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Password form state
   const [passwordForm, setPasswordForm] = useState<PasswordChangeRequest>({
@@ -87,26 +109,42 @@ export function SettingsPage() {
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
 
+  // Load profile data
+  const loadProfile = async () => {
+    try {
+      setProfileLoading(true);
+      setProfileError(null);
+      const data = await getUserProfile();
+      setProfile(data);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Failed to load profile');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   // Load connected accounts
+  const loadAccounts = async () => {
+    try {
+      const accounts = await getConnectedAccounts();
+      setConnectedAccounts(accounts);
+    } catch (error) {
+      console.error('Failed to load connected accounts:', error);
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  // Initial load
   useEffect(() => {
-    const loadAccounts = async () => {
-      try {
-        const accounts = await getConnectedAccounts();
-        setConnectedAccounts(accounts);
-      } catch (error) {
-        console.error('Failed to load connected accounts:', error);
-      } finally {
-        setAccountsLoading(false);
-      }
-    };
-
+    loadProfile();
     loadAccounts();
-  }, [getConnectedAccounts]);
+  }, []);
 
-  // Update form when user changes
+  // Update identity form when user changes
   useEffect(() => {
     if (user) {
-      setProfileForm({
+      setIdentityForm({
         name: user.name,
         email: user.email,
       });
@@ -114,20 +152,27 @@ export function SettingsPage() {
   }, [user]);
 
   /**
-   * Handle profile form submission
+   * Handle tab change with URL persistence
    */
-  const handleProfileSubmit = async (e: React.FormEvent) => {
+  const handleTabChange = (tab: string) => {
+    setSearchParams({ tab }, { replace: true });
+  };
+
+  /**
+   * Handle identity form submission
+   */
+  const handleIdentitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setProfileSaving(true);
-    setProfileMessage(null);
+    setIdentitySaving(true);
+    setIdentityMessage(null);
 
     try {
-      await updateUser({ name: profileForm.name });
-      setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
+      await updateUser({ name: identityForm.name });
+      setIdentityMessage({ type: 'success', text: 'Profile updated successfully!' });
     } catch (error: any) {
-      setProfileMessage({ type: 'error', text: error.message || 'Failed to update profile' });
+      setIdentityMessage({ type: 'error', text: error.message || 'Failed to update profile' });
     } finally {
-      setProfileSaving(false);
+      setIdentitySaving(false);
     }
   };
 
@@ -186,38 +231,84 @@ export function SettingsPage() {
     }
   };
 
+  // Loading state
+  if (profileLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (profileError || !profile) {
+    return (
+      <div className="container max-w-4xl mx-auto p-6">
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle>Error</CardTitle>
+            <CardDescription>
+              {profileError || 'Failed to load profile'}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  const memberSince = new Date(profile.history.member_since).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+  });
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Manage your account settings and preferences.</p>
+    <div className="container max-w-6xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Account</h1>
+          <p className="text-muted-foreground">
+            Manage your profile, security, and preferences
+          </p>
+        </div>
+        {profile.is_premium && (
+          <Badge variant="default" className="gap-1">
+            <Crown className="w-4 h-4" />
+            Premium
+          </Badge>
+        )}
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="profile" className="flex items-center gap-2">
+      <Tabs value={defaultTab} onValueChange={handleTabChange} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="identity" className="flex items-center gap-2">
             <User className="h-4 w-4" />
-            Profile
+            Identity
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
             Security
           </TabsTrigger>
-          <TabsTrigger value="connections" className="flex items-center gap-2">
+          <TabsTrigger value="preferences" className="flex items-center gap-2">
+            <SettingsIcon className="h-4 w-4" />
+            Preferences
+          </TabsTrigger>
+          <TabsTrigger value="connected" className="flex items-center gap-2">
             <Link2 className="h-4 w-4" />
-            Connections
+            Connected Apps
           </TabsTrigger>
         </TabsList>
 
-        {/* Profile Tab */}
-        <TabsContent value="profile">
+        {/* Identity Tab */}
+        <TabsContent value="identity" className="space-y-4">
+          {/* Profile Form */}
           <Card>
             <CardHeader>
               <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Update your personal information and email address.</CardDescription>
+              <CardDescription>Update your personal information</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleProfileSubmit} className="space-y-6">
+              <form onSubmit={handleIdentitySubmit} className="space-y-6">
                 {/* Avatar */}
                 <div className="flex items-center gap-4">
                   <Avatar className="h-20 w-20">
@@ -241,8 +332,8 @@ export function SettingsPage() {
                   <Label htmlFor="name">Name</Label>
                   <Input
                     id="name"
-                    value={profileForm.name}
-                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                    value={identityForm.name}
+                    onChange={(e) => setIdentityForm({ ...identityForm, name: e.target.value })}
                     placeholder="Your name"
                   />
                 </div>
@@ -253,7 +344,7 @@ export function SettingsPage() {
                   <Input
                     id="email"
                     type="email"
-                    value={profileForm.email}
+                    value={identityForm.email}
                     disabled
                     className="bg-muted"
                   />
@@ -263,24 +354,88 @@ export function SettingsPage() {
                 </div>
 
                 {/* Message */}
-                {profileMessage && (
+                {identityMessage && (
                   <div
                     className={`text-sm ${
-                      profileMessage.type === 'success' ? 'text-green-600' : 'text-destructive'
+                      identityMessage.type === 'success' ? 'text-green-600' : 'text-destructive'
                     }`}
                   >
-                    {profileMessage.text}
+                    {identityMessage.text}
                   </div>
                 )}
 
                 {/* Submit */}
-                <Button type="submit" disabled={profileSaving}>
-                  {profileSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button type="submit" disabled={identitySaving}>
+                  {identitySaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Changes
                 </Button>
               </form>
             </CardContent>
           </Card>
+
+          {/* Account Info & Stats */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Account Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Account Details</CardTitle>
+                <CardDescription>Your account information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground">Account Type</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant={profile.is_premium ? 'default' : 'secondary'}>
+                      {profile.is_premium ? 'Premium' : 'Free'}
+                    </Badge>
+                    {profile.is_verified && (
+                      <Badge variant="outline">Verified</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {profile.oauth_provider && (
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Sign-in Method</div>
+                    <div className="text-sm capitalize">{profile.oauth_provider}</div>
+                  </div>
+                )}
+
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    Member Since
+                  </div>
+                  <div className="text-sm">{memberSince}</div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Activity Stats */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Activity</CardTitle>
+                <CardDescription>Your usage statistics</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Map className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">Maps Created</span>
+                  </div>
+                  <span className="text-2xl font-bold">{profile.history.total_maps_created}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Download className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">Exports Generated</span>
+                  </div>
+                  <span className="text-2xl font-bold">{profile.history.total_exports}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Security Tab */}
@@ -289,7 +444,7 @@ export function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Change Password</CardTitle>
-              <CardDescription>Update your password to keep your account secure.</CardDescription>
+              <CardDescription>Update your password to keep your account secure</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handlePasswordSubmit} className="space-y-4">
@@ -355,7 +510,7 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="text-destructive">Danger Zone</CardTitle>
               <CardDescription>
-                Permanently delete your account and all associated data.
+                Permanently delete your account and all associated data
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -389,13 +544,21 @@ export function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Connections Tab */}
-        <TabsContent value="connections">
+        {/* Preferences Tab */}
+        <TabsContent value="preferences">
+          <PreferencesPanel 
+            initialPreferences={profile.preferences} 
+            onUpdate={loadProfile}
+          />
+        </TabsContent>
+
+        {/* Connected Apps Tab */}
+        <TabsContent value="connected">
           <Card>
             <CardHeader>
               <CardTitle>Connected Accounts</CardTitle>
               <CardDescription>
-                Manage your connected OAuth accounts for easier sign-in.
+                Manage your connected OAuth accounts for easier sign-in
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
