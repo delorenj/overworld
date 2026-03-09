@@ -21,7 +21,7 @@ import type { MapItem } from '../types/dashboard';
 import { formatBytes } from '../lib/utils';
 
 export function DashboardPage() {
-  const { user, token, getUsageStats } = useAuth();
+  const { user, token } = useAuth();
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [recentMaps, setRecentMaps] = useState<MapItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);

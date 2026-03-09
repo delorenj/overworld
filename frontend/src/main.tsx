@@ -16,8 +16,7 @@ import { MapPage } from './pages/MapPage';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MyMapsPage } from './pages/MyMapsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { ProfilePage } from './pages/ProfilePage';
+import { AccountPage } from './pages/AccountPage';
 
 // Layout
 import { DashboardLayout } from './components/dashboard/DashboardLayout';
@@ -40,8 +39,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route index element={<DashboardPage />} />
             <Route path="maps" element={<MyMapsPage />} />
             <Route path="upload" element={<UploadPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="profile" element={<ProfilePage />} />
+            <Route path="account" element={<AccountPage />} />
+            {/* Legacy route redirects (OWRLD-25) */}
+            <Route path="settings" element={<Navigate to="/dashboard/account?tab=security" replace />} />
+            <Route path="profile" element={<Navigate to="/dashboard/account?tab=identity" replace />} />
           </Route>
 
           {/* Map View (can be accessed with map ID) */}
