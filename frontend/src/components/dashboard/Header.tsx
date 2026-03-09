@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { ThemeToggle } from '../ui/theme-toggle';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -63,6 +64,9 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Spacer */}
       <div className="flex-1 lg:hidden" />
+
+      {/* Theme Toggle */}
+      <ThemeToggle />
 
       {/* User Menu */}
       <DropdownMenu>
