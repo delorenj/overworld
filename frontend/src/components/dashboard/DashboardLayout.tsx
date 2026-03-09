@@ -10,6 +10,7 @@ import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { DashboardBreadcrumbs } from './DashboardBreadcrumbs';
 import { cn } from '../../lib/utils';
 
 export function DashboardLayout() {
@@ -88,6 +89,7 @@ export function DashboardLayout() {
       <div className="flex flex-col flex-1 min-w-0">
         <Header onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
         <main className="flex-1 overflow-auto p-4 md:p-6">
+          <DashboardBreadcrumbs />
           <Outlet />
         </main>
       </div>
