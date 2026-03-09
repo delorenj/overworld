@@ -5,10 +5,12 @@
  * Supports loading states and empty states.
  */
 
-import { useState, useMemo } from 'react';
-import { Search, SlidersHorizontal, Grid, List } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, SlidersHorizontal, Grid, List, X } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,13 +85,41 @@ export function MapGallery({
   showFilters = true,
   className,
 }: MapGalleryProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // Initialize filters from URL params
   const [filters, setFilters] = useState<MapFilters>({
-    status: 'all',
-    sortBy: 'updatedAt',
-    sortOrder: 'desc',
-    search: '',
+    status: (searchParams.get('status') as MapStatus) || 'all',
+    sortBy: (searchParams.get('sortBy') as 'createdAt' | 'updatedAt' | 'title') || 'updatedAt',
+    sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc',
+    search: searchParams.get('search') || '',
   });
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Sync filters to URL params
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.search) params.set('search', filters.search);
+    if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+    if (filters.sortBy && filters.sortBy !== 'updatedAt') params.set('sortBy', filters.sortBy);
+    if (filters.sortOrder && filters.sortOrder !== 'desc') params.set('sortOrder', filters.sortOrder);
+    
+    setSearchParams(params, { replace: true });
+  }, [filters, setSearchParams]);
+
+  // Keyboard shortcut: Cmd/Ctrl+K to focus search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Filter and sort maps
   const filteredMaps = useMemo(() => {
@@ -144,6 +174,21 @@ export function MapGallery({
     });
   };
 
+  // Check if any filters are active
+  const hasActiveFilters = 
+    filters.search !== '' ||
+    (filters.status !== 'all' && filters.status !== undefined) ||
+    filters.sortBy !== 'updatedAt' ||
+    filters.sortOrder !== 'desc';
+
+  // Get active filter count
+  const activeFilterCount = [
+    filters.search !== '',
+    filters.status !== 'all' && filters.status !== undefined,
+    filters.sortBy !== 'updatedAt',
+    filters.sortOrder !== 'desc',
+  ].filter(Boolean).length;
+
   // Loading state
   if (isLoading) {
     return (
@@ -164,26 +209,46 @@ export function MapGallery({
     <div className={className}>
       {/* Filters and Controls */}
       {showFilters && (
-        <div className="flex flex-col sm:flex-row gap-4 mb-4">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search maps..."
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="pl-9"
-            />
-          </div>
+        <div className="space-y-3 mb-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search maps... (⌘K)"
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                className="pl-9 pr-10"
+              />
+              {filters.search && (
+                <button
+                  onClick={() => setFilters({ ...filters, search: '' })}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
 
-          {/* Filter/Sort Dropdown */}
-          <div className="flex gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <SlidersHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
+            {/* Filter/Sort Dropdown */}
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="relative">
+                    <SlidersHorizontal className="h-4 w-4 mr-2" />
+                    Filters
+                    {activeFilterCount > 0 && (
+                      <Badge 
+                        variant="default" 
+                        className="ml-2 h-5 min-w-5 px-1.5 text-xs"
+                      >
+                        {activeFilterCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Status</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
@@ -228,25 +293,98 @@ export function MapGallery({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* View Mode Toggle */}
-            <div className="flex border rounded-md">
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('grid')}
-                className="rounded-r-none"
-              >
-                <Grid className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('list')}
-                className="rounded-l-none"
-              >
-                <List className="h-4 w-4" />
-              </Button>
+              {/* View Mode Toggle */}
+              <div className="flex border rounded-md">
+                <Button
+                  variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => setViewMode('grid')}
+                  className="rounded-r-none"
+                >
+                  <Grid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => setViewMode('list')}
+                  className="rounded-l-none"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Clear All Filters */}
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              )}
             </div>
+          </div>
+
+          {/* Active Filters & Result Count */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Result Count */}
+            <span className="text-sm text-muted-foreground">
+              {filteredMaps.length === maps.length ? (
+                <>
+                  <strong className="text-foreground">{maps.length}</strong> map
+                  {maps.length !== 1 && 's'}
+                </>
+              ) : (
+                <>
+                  <strong className="text-foreground">{filteredMaps.length}</strong> of{' '}
+                  <strong className="text-foreground">{maps.length}</strong> map
+                  {maps.length !== 1 && 's'}
+                </>
+              )}
+            </span>
+
+            {/* Active Filter Badges */}
+            {filters.status && filters.status !== 'all' && (
+              <Badge variant="secondary" className="gap-1">
+                Status: {filters.status}
+                <button
+                  onClick={() => setFilters({ ...filters, status: 'all' })}
+                  className="hover:bg-muted rounded-sm"
+                  aria-label="Remove status filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+
+            {filters.sortBy && filters.sortBy !== 'updatedAt' && (
+              <Badge variant="secondary" className="gap-1">
+                Sort: {filters.sortBy === 'createdAt' ? 'Created' : filters.sortBy}
+                <button
+                  onClick={() => setFilters({ ...filters, sortBy: 'updatedAt' })}
+                  className="hover:bg-muted rounded-sm"
+                  aria-label="Remove sort filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+
+            {filters.sortOrder && filters.sortOrder !== 'desc' && (
+              <Badge variant="secondary" className="gap-1">
+                Order: {filters.sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
+                <button
+                  onClick={() => setFilters({ ...filters, sortOrder: 'desc' })}
+                  className="hover:bg-muted rounded-sm"
+                  aria-label="Remove order filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
           </div>
         </div>
       )}
