@@ -25,6 +25,9 @@ class User(Base):
     # Email authentication
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
+    # User profile
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # OAuth2 authentication
     oauth_provider: Mapped[Optional[str]] = mapped_column(

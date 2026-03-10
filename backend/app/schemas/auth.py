@@ -59,6 +59,7 @@ class UserResponse(BaseModel):
 
     id: int = Field(..., description="User ID")
     email: str = Field(..., description="User email address")
+    name: Optional[str] = Field(None, description="User's display name from OAuth or profile")
     is_verified: bool = Field(..., description="Whether user email is verified")
     is_premium: bool = Field(..., description="Whether user has premium subscription")
     created_at: datetime = Field(..., description="Account creation timestamp")
