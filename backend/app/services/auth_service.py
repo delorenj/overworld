@@ -541,6 +541,7 @@ class AuthService:
         """
         user = User(
             email=user_info.email,
+            name=user_info.name,  # Store name from OAuth provider
             password_hash=None,  # OAuth users don't have passwords
             oauth_provider=user_info.provider.value,
             oauth_id=user_info.provider_user_id,
